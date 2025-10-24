@@ -300,9 +300,6 @@ def main():
     
     course_processing_order.sort(key=lambda x: x[0])
     
-    print("-" * 60)
-    print()
-    
     total_added = 0
     added_by_course = {}
     
@@ -323,6 +320,7 @@ def main():
         else:
             print(f"Processing: {reminder_list}")
             print(f"No new assignments for {reminder_list}")
+            print()
     
     save_cache(cache_file, assignment_cache)
     

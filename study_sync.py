@@ -80,7 +80,7 @@ def fetch_courses(headers, base_url):
         response.raise_for_status()
         courses = response.json()
         print(f"Found {len(courses)} favorite courses")
-        print("_" * 50)
+        print("-" * 50)
         return courses
     except requests.exceptions.RequestException as e:
         print(f"ERROR: Failed to fetch favorite courses: {e}")
@@ -213,7 +213,7 @@ def main():
     
     save_cache(cache_file, assignment_cache)
     
-    print("_" * 50)
+    print("-" * 50)
     if total_added == 0:
         print("No new assignments to add. You're all caught up!")
     else:

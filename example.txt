@@ -1,0 +1,3 @@
+# Fill in your actual values and rename it .env
+CANVAS_API_TOKEN=your_canvas_api_token_here
+CANVAS_DOMAIN=canvas.school.edu

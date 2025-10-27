@@ -71,8 +71,8 @@ class AssignmentProcessor:
         
         ai_notes = ""
         if self.ai_enhancer and self.ai_enhancer.model:
-            if existing and existing[6] and existing[6].strip():  # AI notes already exist and not empty
-                ai_notes = existing[6]  # Use existing AI notes
+            if existing and existing[6] and existing[6].strip():
+                ai_notes = existing[6]
             else:
                 ai_notes = self.ai_enhancer.enhance_assignment(title, description, course_name, college_name)
         

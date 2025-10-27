@@ -50,7 +50,6 @@ def get_due_date(item):
 def main():
     load_dotenv()
     
-    # Check command line arguments
     ai_enabled = "-ai" in sys.argv or "--ai" in sys.argv
     
     api_token = os.getenv("CANVAS_API_TOKEN")
@@ -152,19 +151,17 @@ def generate_study_plan(added_by_course, college_name, ai_enhancer):
     if not added_by_course:
         return ["No new assignments found."]
     
-    # Flatten the newly added assignments
     new_assignments = []
     for course, assignments in added_by_course.items():
         for title, due in assignments:
             new_assignments.append((title, due, course))
     
-    # Only return AI-generated study strategy for new assignments
     return generate_ai_study_tips_for_new_assignments(new_assignments, college_name, ai_enhancer)
 
 def generate_ai_study_tips_for_new_assignments(new_assignments, college_name, ai_enhancer):
     if not ai_enhancer or not ai_enhancer.model or not new_assignments:
         return [
-            "💡 STUDY TIPS:",
+            "STUDY TIPS:",
             "  • Start with urgent assignments first",
             "  • Block 2-3 hour study sessions", 
             "  • Take breaks every 45 minutes",
@@ -191,7 +188,6 @@ def generate_ai_study_tips_for_new_assignments(new_assignments, college_name, ai
             except:
                 continue
         
-        # Create assignment list for prompt
         assignment_list = []
         for title, due, course in new_assignments:
             assignment_list.append(f"• {title} ({course}) - Due {due}")

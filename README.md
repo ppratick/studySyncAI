@@ -1,4 +1,4 @@
-# StudySync-AI v2
+# studySyncAI
 
 An AI-powered study management system that syncs Canvas assignments and discussion posts to Apple Reminders with intelligent analysis and personalized study planning.
 

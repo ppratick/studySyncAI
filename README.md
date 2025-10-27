@@ -1,4 +1,4 @@
-# StudySync-AI v2
+# studySyncAI
 
 An AI-powered study management system that syncs Canvas assignments and discussion posts to Apple Reminders with intelligent analysis and personalized study planning.
 
@@ -10,13 +10,14 @@ An AI-powered study management system that syncs Canvas assignments and discussi
 - **Apple Reminders Integration**: Seamlessly adds assignments to macOS Reminders app
 - **SQLite Database**: Persistent storage for assignments, course mappings, and settings
 - **Modular Architecture**: Clean, organized codebase with separate modules
+- **Command Line Interface**: Run with `--ai` flag for AI-enhanced mode
 
 ## Setup
 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd StudySync-AI-v2
+   cd studySyncAI
    ```
 
 2. **Create virtual environment**
@@ -31,14 +32,20 @@ An AI-powered study management system that syncs Canvas assignments and discussi
    ```
 
 4. **Configure environment variables**
-   ```bash
-   cp example.txt .env
-   # Edit .env with your API keys and Canvas domain
+   Create a `.env` file with your API keys:
+   ```
+   CANVAS_API_TOKEN=your_canvas_token
+   CANVAS_DOMAIN=your_canvas_domain
+   GEMINI_API_KEY=your_gemini_key
    ```
 
 5. **Run the application**
    ```bash
+   # Standard mode
    python3 main.py
+   
+   # AI-enhanced mode
+   python3 main.py --ai
    ```
 
 ## Environment Variables
@@ -71,7 +78,3 @@ An AI-powered study management system that syncs Canvas assignments and discussi
 ## Contributing
 
 This project is part of a Human-AI Interaction course project. Contributions and improvements are welcome!
-
-## License
-
-MIT License

@@ -1,5 +1,5 @@
-.env
+__pycache__/
 venv/
-cache/*.json
+.env
+backend/studysync.db
 .DS_Store
-

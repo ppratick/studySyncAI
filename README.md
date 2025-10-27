@@ -65,7 +65,7 @@ An AI-powered study management system that syncs Canvas assignments and discussi
 
 ## Known Issues
 
-### 🐛 Discussion Post Completion Detection
+### Discussion Post Completion Detection
 
 **Issue**: Completed discussion posts may still be added to reminders on subsequent runs.
 

@@ -70,7 +70,7 @@ class AssignmentProcessor:
             self.reminders_manager.remove_existing_reminder(title, reminder_list)
         
         ai_notes = ""
-        if self.ai_enhancer.model:
+        if self.ai_enhancer and self.ai_enhancer.model:
             if existing and existing[6] and existing[6].strip():  # AI notes already exist and not empty
                 ai_notes = existing[6]  # Use existing AI notes
             else:

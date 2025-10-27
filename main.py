@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from backend.database import Database
@@ -48,6 +49,10 @@ def get_due_date(item):
 
 def main():
     load_dotenv()
+    
+    # Check command line arguments
+    ai_enabled = "-ai" in sys.argv or "--ai" in sys.argv
+    
     api_token = os.getenv("CANVAS_API_TOKEN")
     canvas_domain = os.getenv("CANVAS_DOMAIN")
     
@@ -56,15 +61,20 @@ def main():
         exit(1)
     
     db = Database()
-    ai_enhancer = AIEnhancer()
+    
+    ai_enhancer = None
+    if ai_enabled:
+        ai_enhancer = AIEnhancer()
+        if ai_enhancer and ai_enhancer.model:
+            print("AI enhancement enabled with Gemini")
+        else:
+            print("AI enhancement disabled - no GEMINI_API_KEY found")
+    else:
+        print("AI enhancement disabled - use '-ai' flag to enable")
+    
     reminders_manager = RemindersManager()
     canvas_api = CanvasAPI(api_token, canvas_domain)
     processor = AssignmentProcessor(db, ai_enhancer, reminders_manager)
-    
-    if ai_enhancer.model:
-        print("AI enhancement enabled with Gemini")
-    else:
-        print("AI enhancement disabled")
     
     college_name = get_college_name(db)
     
@@ -128,83 +138,84 @@ def main():
                 print(f"  - {title} (Due {due})")
             print()
     
-    print("=" * 60)
-    print("📚 STUDY PLAN")
-    print("=" * 60)
-    print()
-    
-    study_plan = generate_study_plan(db, canvas_api, college_name, ai_enhancer)
-    for line in study_plan:
-        print(line)
+    if ai_enhancer and ai_enhancer.model and total_added > 0:
+        print("-" * 60)
+        print()
+        print("AI STUDY STRATEGY")
+        print()
+        
+        study_plan = generate_study_plan(added_by_course, college_name, ai_enhancer)
+        for line in study_plan:
+            print(line)
 
-def generate_study_plan(db, canvas_api, college_name, ai_enhancer):
-    plan = []
+def generate_study_plan(added_by_course, college_name, ai_enhancer):
+    if not added_by_course:
+        return ["No new assignments found."]
     
-    all_assignments = db.get_all_assignments()
-    if not all_assignments:
-        return ["No assignments found. Run the sync first!"]
+    # Flatten the newly added assignments
+    new_assignments = []
+    for course, assignments in added_by_course.items():
+        for title, due in assignments:
+            new_assignments.append((title, due, course))
     
-    from datetime import datetime, timedelta
-    now = datetime.now()
-    
-    plan.append("🎯 UPCOMING DEADLINES:")
-    plan.append("")
-    
-    urgent = []
-    this_week = []
-    next_week = []
-    later = []
-    
-    for assignment in all_assignments:
-        try:
-            due_date = datetime.strptime(assignment[3], "%Y-%m-%dT%H:%M:%SZ")
-            days_until = (due_date - now).days
-            
-            if days_until <= 2:
-                urgent.append((assignment[1], due_date.strftime("%m/%d"), days_until))
-            elif days_until <= 7:
-                this_week.append((assignment[1], due_date.strftime("%m/%d"), days_until))
-            elif days_until <= 14:
-                next_week.append((assignment[1], due_date.strftime("%m/%d"), days_until))
-            else:
-                later.append((assignment[1], due_date.strftime("%m/%d"), days_until))
-        except:
-            continue
-    
-    if urgent:
-        plan.append("🚨 URGENT (Due in 2 days or less):")
-        for title, due, days in sorted(urgent, key=lambda x: x[2]):
-            plan.append(f"  • {title} - Due {due} ({days} days)")
-        plan.append("")
-    
-    if this_week:
-        plan.append("📅 THIS WEEK:")
-        for title, due, days in sorted(this_week, key=lambda x: x[2]):
-            plan.append(f"  • {title} - Due {due} ({days} days)")
-        plan.append("")
-    
-    if next_week:
-        plan.append("📆 NEXT WEEK:")
-        for title, due, days in sorted(next_week, key=lambda x: x[2]):
-            plan.append(f"  • {title} - Due {due} ({days} days)")
-        plan.append("")
-    
-    if later:
-        plan.append("📚 UPCOMING:")
-        for title, due, days in sorted(later, key=lambda x: x[2]):
-            plan.append(f"  • {title} - Due {due} ({days} days)")
-        plan.append("")
-    
-    ai_study_tips = generate_ai_study_tips(all_assignments, college_name, ai_enhancer)
-    plan.extend(ai_study_tips)
-    plan.append("")
-    
-    return plan
+    # Only return AI-generated study strategy for new assignments
+    return generate_ai_study_tips_for_new_assignments(new_assignments, college_name, ai_enhancer)
 
-def generate_ai_study_tips(assignments, college_name, ai_enhancer):
-    if not ai_enhancer.model or not assignments:
+def generate_ai_study_tips_for_new_assignments(new_assignments, college_name, ai_enhancer):
+    if not ai_enhancer or not ai_enhancer.model or not new_assignments:
         return [
             "💡 STUDY TIPS:",
+            "  • Start with urgent assignments first",
+            "  • Block 2-3 hour study sessions", 
+            "  • Take breaks every 45 minutes",
+            "  • Review AI notes for each assignment"
+        ]
+    
+    try:
+        from datetime import datetime
+        
+        urgent_count = 0
+        this_week_count = 0
+        total_assignments = len(new_assignments)
+        
+        now = datetime.now()
+        for title, due, course in new_assignments:
+            try:
+                due_date = datetime.strptime(due, "%m/%d/%Y")
+                days_until = (due_date - now).days
+                
+                if days_until <= 2:
+                    urgent_count += 1
+                elif days_until <= 7:
+                    this_week_count += 1
+            except:
+                continue
+        
+        # Create assignment list for prompt
+        assignment_list = []
+        for title, due, course in new_assignments:
+            assignment_list.append(f"• {title} ({course}) - Due {due}")
+        
+        prompt = f"""College: {college_name}
+New assignments added: {total_assignments}
+Urgent assignments (≤2 days): {urgent_count}
+This week assignments (3-7 days): {this_week_count}
+
+New assignments:
+{chr(10).join(assignment_list)}
+
+Generate a personalized study strategy paragraph specifically for these NEW assignments. Be concise and practical. Write as a flowing paragraph, not bullet points."""
+        
+        response = ai_enhancer.model.generate_content(prompt)
+        return [response.text.strip()]
+        
+    except Exception as e:
+        return []
+
+def generate_ai_study_tips(assignments, college_name, ai_enhancer):
+    if not ai_enhancer or not ai_enhancer.model or not assignments:
+        return [
+            "STUDY TIPS:",
             "  • Start with urgent assignments first",
             "  • Block 2-3 hour study sessions", 
             "  • Take breaks every 45 minutes",
@@ -239,7 +250,7 @@ This week assignments (3-7 days): {this_week_count}
 Generate personalized study strategy tips for this workload. Be concise and practical.
 
 Format:
-💡 STUDY STRATEGY:
+STUDY STRATEGY:
 • [specific tip 1]
 • [specific tip 2]
 • [specific tip 3]
@@ -247,9 +258,9 @@ Format:
         
         response = ai_enhancer.model.generate_content(prompt)
         tips = response.text.strip().split('\n')
-        
+
         return tips if tips else [
-            "💡 STUDY STRATEGY:",
+            "STUDY STRATEGY:",
             "  • Prioritize urgent assignments",
             "  • Schedule focused study blocks",
             "  • Take regular breaks",
@@ -259,7 +270,7 @@ Format:
     except Exception as e:
         print(f"WARNING: AI study tips failed: {e}")
         return [
-            "💡 STUDY STRATEGY:",
+            "STUDY STRATEGY:",
             "  • Start with urgent assignments first",
             "  • Block 2-3 hour study sessions",
             "  • Take breaks every 45 minutes", 

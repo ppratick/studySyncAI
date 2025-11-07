@@ -11,6 +11,7 @@ An AI-powered study management system that syncs Canvas assignments and discussi
 - **SQLite Database**: Persistent storage for assignments, course mappings, and settings
 - **Modular Architecture**: Clean, organized codebase with separate modules
 - **Command Line Interface**: Run with `--ai` flag for AI-enhanced mode
+- **Web Dashboard**: Beautiful web interface for viewing and managing assignments
 
 ## Setup
 
@@ -40,13 +41,27 @@ An AI-powered study management system that syncs Canvas assignments and discussi
    ```
 
 5. **Run the application**
-   ```bash
-   # Standard mode
-   python3 main.py
+
+   **Command Line Interface (CLI Version):**
+   - Uses database: `cli/backend/studysync-cli.db`
+   - Simple CLI without course enable/disable features
+   - ```bash
+     # Standard mode
+     python3 cli/main.py
+     
+     # AI-enhanced mode
+     python3 cli/main.py --ai
+     ```
+
+   **Web Dashboard (Web Version):**
+   - Uses database: `web/backend/studysync-web.db`
+   - Full-featured web interface with course management
+   - ```bash
+     python3 web/app.py
+     ```
+     Then open your browser to `http://localhost:5001`
    
-   # AI-enhanced mode
-   python3 main.py --ai
-   ```
+   **Note**: The CLI and Web versions use separate databases, so course mappings and settings are independent between the two versions.
 
 ## Environment Variables
 
@@ -56,12 +71,33 @@ An AI-powered study management system that syncs Canvas assignments and discussi
 
 ## Architecture
 
-- `main.py`: Main entry point and orchestration
-- `backend/canvas_api.py`: Canvas API interactions
-- `backend/assignment_processor.py`: Assignment processing logic
-- `backend/ai_enhancer.py`: AI-powered assignment analysis
-- `backend/reminders_manager.py`: Apple Reminders integration
-- `backend/database.py`: SQLite database operations
+```
+studySyncAI/
+├── cli/
+│   ├── main.py              # CLI entry point and orchestration
+│   └── backend/             # CLI backend modules
+│       ├── canvas_api.py
+│       ├── assignment_processor.py
+│       ├── ai_enhancer.py
+│       ├── reminders_manager.py
+│       └── database.py
+├── web/
+│   ├── app.py               # Flask web server and API endpoints
+│   ├── frontend/            # Web dashboard (HTML, CSS, JavaScript)
+│   │   ├── index.html
+│   │   └── static/
+│   │       ├── css/
+│   │       └── js/
+│   └── backend/             # Web backend modules
+│       ├── canvas_api.py
+│       ├── assignment_processor.py
+│       ├── ai_enhancer.py
+│       ├── reminders_manager.py
+│       └── database.py
+├── venv/                    # Shared virtual environment
+├── README.md
+└── .gitignore
+```
 
 ## Known Issues
 

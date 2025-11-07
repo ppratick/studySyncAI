@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudySync AI - Assignment Manager</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div>
+                    <h1>StudySync AI</h1>
+                    <p class="subtitle">AI-Powered Assignment Management</p>
+                </div>
+                <button id="settingsBtn" class="btn-icon" title="Settings">⚙️</button>
+            </div>
+        </header>
+
+        <div class="controls">
+            <button id="syncBtn" class="btn btn-primary">Sync Assignments</button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalAssignments">0</div>
+                <div class="stat-label">New Assignments</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="upcomingAssignments">0</div>
+                <div class="stat-label">Upcoming (7 days)</div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <select id="courseFilter">
+                <option value="">All Courses</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Search assignments...">
+        </div>
+
+        <div id="assignmentsList" class="assignments-list"></div>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Settings</h2>
+            <div class="form-group">
+                <label for="collegeName">College/University:</label>
+                <select id="collegeName" class="form-select">
+                    <option value="">Select your college/university</option>
+                    <option value="Arizona State University">Arizona State University</option>
+                    <option value="Boston University">Boston University</option>
+                    <option value="Carnegie Mellon University">Carnegie Mellon University</option>
+                    <option value="Columbia University">Columbia University</option>
+                    <option value="Cornell University">Cornell University</option>
+                    <option value="Duke University">Duke University</option>
+                    <option value="Georgia Institute of Technology">Georgia Institute of Technology</option>
+                    <option value="Harvard University">Harvard University</option>
+                    <option value="Johns Hopkins University">Johns Hopkins University</option>
+                    <option value="Massachusetts Institute of Technology">Massachusetts Institute of Technology</option>
+                    <option value="New York University">New York University</option>
+                    <option value="Northwestern University">Northwestern University</option>
+                    <option value="Ohio State University">Ohio State University</option>
+                    <option value="Pennsylvania State University">Pennsylvania State University</option>
+                    <option value="Princeton University">Princeton University</option>
+                    <option value="Purdue University">Purdue University</option>
+                    <option value="Rutgers University">Rutgers University</option>
+                    <option value="Stanford University">Stanford University</option>
+                    <option value="Texas A&M University">Texas A&M University</option>
+                    <option value="University of California, Berkeley">University of California, Berkeley</option>
+                    <option value="University of California, Davis">University of California, Davis</option>
+                    <option value="University of California, Irvine">University of California, Irvine</option>
+                    <option value="University of California, Los Angeles">University of California, Los Angeles</option>
+                    <option value="University of California, San Diego">University of California, San Diego</option>
+                    <option value="University of California, Santa Barbara">University of California, Santa Barbara</option>
+                    <option value="University of Chicago">University of Chicago</option>
+                    <option value="University of Florida">University of Florida</option>
+                    <option value="University of Illinois at Urbana-Champaign">University of Illinois at Urbana-Champaign</option>
+                    <option value="University of Maryland">University of Maryland</option>
+                    <option value="University of Michigan">University of Michigan</option>
+                    <option value="University of North Carolina at Chapel Hill">University of North Carolina at Chapel Hill</option>
+                    <option value="University of Pennsylvania">University of Pennsylvania</option>
+                    <option value="University of Southern California">University of Southern California</option>
+                    <option value="University of Texas at Austin">University of Texas at Austin</option>
+                    <option value="University of Virginia">University of Virginia</option>
+                    <option value="University of Washington">University of Washington</option>
+                    <option value="University of Wisconsin-Madison">University of Wisconsin-Madison</option>
+                    <option value="Yale University">Yale University</option>
+                    <option value="Other">Other (enter manually)</option>
+                </select>
+                <input type="text" id="collegeNameCustom" placeholder="Enter college name" style="display: none; margin-top: 10px;">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="aiEnabled">
+                    Enable AI Enhancement
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label>Manage Courses:</label>
+                <div class="info-box">
+                    <p><strong>How to add a course:</strong></p>
+                    <p>1. Go to Canvas and navigate to your course</p>
+                    <p>2. Click the star icon ⭐ next to the course name to favorite it</p>
+                    <p>3. Click "Sync Assignments" - the course will appear here automatically</p>
+                    <p style="margin-top: 12px;"><strong>Managing courses:</strong></p>
+                    <p>• Click the × button to disable a course (assignments won't sync, but existing ones remain)</p>
+                    <p>• Click the ✓ button to re-enable a disabled course</p>
+                    <p>• Disabled courses appear greyed out and won't be synced</p>
+                </div>
+                <div id="coursesList" class="courses-list"></div>
+            </div>
+            
+            <button id="saveSettings" class="btn btn-primary">Save</button>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
+

@@ -176,6 +176,65 @@ h1 {
     display: block;
 }
 
+.sync-progress {
+    background: white;
+    border: 2px solid #667eea;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.sync-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.sync-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #f0f0f0;
+    border-top: 3px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.sync-progress-header span {
+    font-weight: 600;
+    color: #333;
+    font-size: 1.05em;
+}
+
+.sync-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.sync-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+.sync-progress-details {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 8px;
+}
+
 .stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -249,7 +308,14 @@ h1 {
     align-items: start;
     margin-bottom: 10px;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 15px;
+}
+
+.assignment-header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
 }
 
 .assignment-title {
@@ -268,10 +334,33 @@ h1 {
     font-weight: 500;
 }
 
+.assignment-course-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+    margin-bottom: 12px;
+    letter-spacing: 0.3px;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+}
+
 .assignment-course {
     color: #666;
     font-size: 0.9em;
     margin-bottom: 10px;
+}
+
+.assignment-description {
+    color: #555;
+    font-size: 0.9em;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 .assignment-ai-notes {
@@ -295,19 +384,28 @@ h1 {
     background-color: rgba(0, 0, 0, 0.5);
 }
 
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #333;
+    font-size: 1.8em;
+    font-weight: 700;
+}
+
 .modal-content {
     background-color: white;
     margin: auto;
-    padding: 30px;
+    padding: 35px;
     border-radius: 12px;
     width: 90%;
-    max-width: 500px;
+    max-width: 800px;
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     max-height: 90vh;
     overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
 .close {
@@ -369,41 +467,124 @@ h1 {
     accent-color: #667eea;
 }
 
+.settings-section {
+    margin-bottom: 35px;
+    padding: 25px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+.settings-section:last-of-type {
+    margin-bottom: 20px;
+}
+
+.settings-section h3 {
+    color: #667eea;
+    font-size: 1.3em;
+    margin-bottom: 20px;
+    font-weight: 600;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #667eea;
+}
+
+.required {
+    color: #d32f2f;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 5px;
+    font-size: 0.85em;
+    color: #666;
+    font-style: italic;
+}
+
+.settings-actions {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 2px solid #e0e0e0;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.reminder-list-editable:hover {
+    color: #667eea !important;
+}
+
+.reminder-list-input:focus {
+    outline: none;
+    border-color: #667eea !important;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}
+
 .info-box {
-    background: #f0f4ff;
-    border: 1px solid #667eea;
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 15px;
-    font-size: 0.9em;
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
+    border: 2px solid #667eea;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    font-size: 0.95em;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
 }
 
 .info-box p {
-    margin: 5px 0;
+    margin: 8px 0;
     color: #333;
+    line-height: 1.6;
 }
 
 .info-box p:first-child {
     margin-top: 0;
+    margin-bottom: 8px;
     font-weight: 600;
+    color: #667eea;
+    font-size: 1.1em;
+}
+
+.info-box ul {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.info-box ul li {
+    margin: 6px 0;
+    line-height: 1.6;
+}
+
+.info-box p strong {
     color: #667eea;
 }
 
 .courses-list {
     margin-top: 10px;
-    max-height: 300px;
-    overflow-y: auto;
 }
 
 .course-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px;
-    background: #f8f9fa;
+    padding: 15px;
+    background: white;
     border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    margin-bottom: 8px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
+}
+
+.course-item:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
 }
 
 .course-item.course-disabled {
@@ -422,7 +603,12 @@ h1 {
 .course-info strong {
     display: block;
     color: #333;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
+    font-size: 1.05em;
+}
+
+.course-info div {
+    margin-top: 6px;
 }
 
 .reminder-list-name {
@@ -476,6 +662,42 @@ h1 {
 
 .btn-enable:hover {
     background: #388e3c;
+}
+
+.btn-reminder-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.btn-add-reminder {
+    color: #667eea;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    font-style: italic;
+}
+
+.btn-add-reminder:hover:not(:disabled) {
+    color: #5568d3;
+    text-decoration-style: solid;
+}
+
+.btn-reminder-added {
+    color: #4caf50;
+    cursor: default;
+    text-decoration: none;
+    font-style: normal;
+}
+
+.btn-reminder-link:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 @media (max-width: 768px) {

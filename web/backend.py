@@ -31,10 +31,18 @@ class Database:
                 course_name TEXT NOT NULL,
                 reminder_list TEXT NOT NULL,
                 ai_notes TEXT,
+                reminder_added INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Add reminder_added column if it doesn't exist
+        try:
+            cursor.execute('ALTER TABLE assignments ADD COLUMN reminder_added INTEGER DEFAULT 0')
+        except sqlite3.OperationalError as e:
+            if 'duplicate column' not in str(e).lower():
+                raise
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS courses (
@@ -72,9 +80,22 @@ class Database:
         
         cursor.execute('''
             INSERT OR REPLACE INTO assignments 
-            (assignment_id, title, description, due_at, course_name, reminder_list, ai_notes, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (assignment_id, title, description, due_at, course_name, reminder_list, ai_notes))
+            (assignment_id, title, description, due_at, course_name, reminder_list, ai_notes, reminder_added, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT reminder_added FROM assignments WHERE assignment_id = ?), 0), CURRENT_TIMESTAMP)
+        ''', (assignment_id, title, description, due_at, course_name, reminder_list, ai_notes, assignment_id))
+        
+        conn.commit()
+        conn.close()
+    
+    def mark_reminder_added(self, assignment_id):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE assignments 
+            SET reminder_added = 1 
+            WHERE assignment_id = ?
+        ''', (assignment_id,))
         
         conn.commit()
         conn.close()
@@ -196,7 +217,7 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT assignment_id, title, description, due_at, course_name, reminder_list, ai_notes
+            SELECT assignment_id, title, description, due_at, course_name, reminder_list, ai_notes, reminder_added
             FROM assignments
             ORDER BY due_at ASC
         ''')
@@ -445,8 +466,6 @@ class AssignmentProcessor:
         description = assignment_data.get("description", "")
         
         existing = self.db.get_assignment(assignment_id)
-        if existing and existing[4] != due_at:
-            self.reminders_manager.remove_existing_reminder(title, reminder_list)
         
         ai_notes = ""
         if self.ai_enhancer and self.ai_enhancer.model:
@@ -455,7 +474,8 @@ class AssignmentProcessor:
             else:
                 ai_notes = self.ai_enhancer.enhance_assignment(title, description, course_name, college_name)
         
-        self.reminders_manager.add_reminder(title, apple_due, reminder_list, ai_notes)
+        # Don't automatically add reminders - user will choose which ones to add
+        # Just save the assignment to the database
         self.db.save_assignment(assignment_id, title, description, due_at, course_name, reminder_list, ai_notes)
     
     def process_course_assignments(self, reminder_list, items, course_name, college_name, now):

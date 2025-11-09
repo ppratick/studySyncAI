@@ -10,16 +10,23 @@
     <div class="container">
         <header>
             <div class="header-content">
-                <div>
+                <div class="header-center">
                     <h1>StudySync AI</h1>
                     <p class="subtitle">AI-Powered Assignment Management</p>
                 </div>
-                <button id="settingsBtn" class="btn-icon" title="Settings">⚙️</button>
             </div>
         </header>
 
         <div class="controls">
-            <button id="syncBtn" class="btn btn-primary">Sync Assignments</button>
+            <div class="controls-row">
+                <button id="syncBtn" class="btn btn-primary btn-fixed-width">Sync Assignments</button>
+                <button id="aiInsightsBtn" class="btn btn-primary btn-fixed-width">AI Insights</button>
+            </div>
+            <div class="controls-row controls-row-top">
+                <button id="toggleCompletedBtn" class="btn-icon" title="Completed Assignments">✓</button>
+                <button id="toggleDeletedBtn" class="btn-icon" title="Recently Deleted">🗑️</button>
+                <button id="settingsBtn" class="btn-icon" title="Settings">⚙️</button>
+            </div>
         </div>
 
         <div id="status" class="status"></div>
@@ -35,40 +42,45 @@
             <div id="syncProgressDetails" class="sync-progress-details"></div>
         </div>
 
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-value" id="totalAssignments">0</div>
-                <div class="stat-label">Total Assignments</div>
+        <div id="bulkActions" class="bulk-actions" style="display: none;">
+            <span id="selectedCount">0 selected</span>
+            <button id="selectAllBtn" class="btn btn-secondary btn-small">Select All</button>
+            <button id="bulkComplete" class="btn btn-secondary">Mark Complete</button>
+            <button id="bulkDelete" class="btn btn-secondary">Delete</button>
+            <button id="bulkAddReminders" class="btn btn-secondary">Add to Reminders</button>
+            <button id="bulkCancel" class="btn btn-secondary">Cancel</button>
+        </div>
+
+        <div class="assignments-header">
+            <div class="assignments-header-left">
+                <span class="assignment-count"><span id="totalAssignments">0</span> assignments</span>
+                <button id="addAssignmentBtn" class="btn btn-primary btn-add-small" title="Add Assignment">+</button>
             </div>
+            <label class="group-toggle-label">
+                <input type="checkbox" id="groupByCourse">
+                <span>Group by Course</span>
+            </label>
         </div>
-
-        <div class="filters">
-            <select id="courseFilter">
-                <option value="">All Courses</option>
-            </select>
-            <input type="text" id="searchInput" placeholder="Search assignments...">
-        </div>
-
         <div id="assignmentsList" class="assignments-list"></div>
     </div>
 
     <div id="setupModal" class="modal">
         <div class="modal-content">
             <h2>Initial Setup</h2>
-            <div id="setupWarningMessage" style="display: none; margin-bottom: 20px; padding: 12px 16px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404; font-size: 0.95em; font-weight: 500;"></div>
-            <div class="info-box" style="margin-bottom: 25px;">
+            <div id="setupWarningMessage" style="display: none;"></div>
+            <div class="info-box">
                 <p><strong>Welcome to StudySync AI!</strong></p>
-                <p style="margin-top: 12px;">To get started, please provide the following information:</p>
-                <ul style="margin: 12px 0 0 0; padding-left: 20px; line-height: 1.8;">
+                <p>To get started, please provide the following information:</p>
+                <ul>
                     <li>Your college or university name</li>
                     <li>Reminder list name for each course (required)</li>
                     <li>Whether to automatically add assignments to Apple Reminders (optional)</li>
                 </ul>
-                <p style="margin-top: 12px; font-size: 0.9em; color: #666;">You can change these settings later in the Settings page.</p>
+                <p class="info-text">You can change these settings later in the Settings page.</p>
             </div>
             
-            <div class="form-group" style="margin-bottom: 25px;">
-                <label for="setupCollegeName" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">College or University <span class="required">*</span></label>
+            <div class="form-group">
+                <label for="setupCollegeName">College or University <span class="required">*</span></label>
                 <select id="setupCollegeName" class="form-select">
                     <option value="">Select your college/university</option>
                     <option value="Arizona State University">Arizona State University</option>
@@ -111,35 +123,35 @@
                     <option value="Yale University">Yale University</option>
                     <option value="Other">Other (enter manually)</option>
                 </select>
-                    <input type="text" id="setupCollegeNameCustom" placeholder="Enter college name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
+                    <input type="text" id="setupCollegeNameCustom" class="form-input" placeholder="Enter college name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
             </div>
             
-            <div class="form-group" id="setupReminderListsGroup" style="margin-bottom: 25px;">
-                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Reminder List Names for Courses <span class="required">*</span></label>
-                <p class="form-hint" style="margin-bottom: 12px; line-height: 1.6;">Each course needs a reminder list name. This will be the name of the list in Apple Reminders where assignments for that course will be added. You can change these later in Settings.</p>
+            <div class="form-group" id="setupReminderListsGroup">
+                <label>Reminder List Names for Courses <span class="required">*</span></label>
+                <p class="form-hint">Each course needs a reminder list name. This will be the name of the list in Apple Reminders where assignments for that course will be added. You can change these later in Settings.</p>
                 <div id="setupCoursesList" class="courses-list"></div>
             </div>
             
-            <div class="form-group" style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e0e0e0;">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;">
-                    <input type="checkbox" id="setupAutoSyncReminders" style="width: 20px; height: 20px; cursor: pointer; accent-color: #667eea;">
-                    <span style="font-weight: 600; color: #333;">Automatically sync assignments to Apple Reminders</span>
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="setupAutoSyncReminders">
+                    <span class="checkbox-label-text">Automatically sync assignments to Apple Reminders</span>
                 </label>
-                <p class="form-hint" style="margin-left: 30px; margin-top: 4px; line-height: 1.5;">If enabled, assignments will be automatically added to Apple Reminders when synced. If disabled, you can manually add them using the "Add to Reminders" button on each assignment.</p>
+                <p class="form-hint form-hint-indented">If enabled, assignments will be automatically added to Apple Reminders when synced. If disabled, you can manually add them using the "Add to Reminders" button on each assignment.</p>
             </div>
             
             <div class="settings-actions">
                 <button id="saveAndSync" class="btn btn-primary">Save & Sync</button>
-                <button id="cancelSetup" class="btn btn-secondary" style="margin-left: 10px;">Cancel</button>
+                <button id="cancelSetup" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
 
     <div id="settingsModal" class="modal">
         <div class="modal-content">
-            <span class="close">&times;</span>
+            <span class="close" onclick="closeModal()">&times;</span>
             <h2>Settings</h2>
-            <div id="settingsWarningMessage" style="display: none; margin-bottom: 20px; padding: 12px 16px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404; font-size: 0.95em; font-weight: 500;"></div>
+            <div id="settingsWarningMessage" style="display: none;"></div>
             
             <div class="settings-section">
                 <h3>Basic Information</h3>
@@ -187,12 +199,12 @@
                         <option value="Yale University">Yale University</option>
                         <option value="Other">Other (enter manually)</option>
                     </select>
-                    <input type="text" id="collegeNameCustom" placeholder="Enter college name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
+                    <input type="text" id="collegeNameCustom" class="form-input" placeholder="Enter college name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
                 </div>
                 
-                <div class="form-group" style="margin-top: 20px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="settingsAutoSyncReminders" style="width: 20px; height: 20px; cursor: pointer;">
+                <div class="form-group section-spacing">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="settingsAutoSyncReminders">
                         <span>Automatically sync assignments to Apple Reminders</span>
                     </label>
                     <p class="form-hint">If enabled, assignments will be automatically added to Apple Reminders when synced. If disabled, you can manually add them using the "Add to Reminders" button on each assignment.</p>
@@ -206,8 +218,8 @@
                     <p>1. Go to Canvas and navigate to your course</p>
                     <p>2. Click the star icon ⭐ next to the course name to favorite it</p>
                     <p>3. Click "Sync Assignments" - the course will appear here automatically</p>
-                    <p style="margin-top: 12px;"><strong>Managing courses:</strong></p>
-                    <ul style="margin: 8px 0; padding-left: 20px; line-height: 1.8;">
+                    <p class="section-spacing-top"><strong>Managing courses:</strong></p>
+                    <ul>
                         <li><strong>Important:</strong> Each course must have a reminder list name set before syncing</li>
                         <li>Click the reminder list name to set or edit it for that specific course</li>
                         <li>Click the × button to disable a course (assignments won't sync, but existing ones remain)</li>
@@ -224,7 +236,107 @@
         </div>
     </div>
 
-    <script src="/app.js?v=3"></script>
+    <div id="aiInsightsDateModal" class="modal">
+        <div class="modal-content modal-content-small">
+            <span class="close" onclick="closeAIInsightsDateModal()">&times;</span>
+            <h2>AI Insights</h2>
+            <p class="info-text" style="margin-bottom: 20px;">When would you like feedback until? (e.g., semester end, break, specific date)</p>
+            <div class="form-group">
+                <label for="insightsEndDate">End Date <span class="required">*</span></label>
+                <input type="date" id="insightsEndDate" class="form-input" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAIInsightsDateModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="generateInsightsBtn">Generate Insights</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="aiInsightsModal" class="modal">
+        <div class="modal-content modal-content-large">
+            <span class="close" onclick="closeAIInsightsModal()">&times;</span>
+            <div class="modal-header">
+                <h2>AI Insights</h2>
+                <button id="refreshInsightsBtn" class="btn btn-secondary btn-small">Refresh</button>
+            </div>
+            <div id="aiInsightsContent">
+                <div class="loading-content">
+                    <div class="sync-spinner spinner-centered"></div>
+                    <p>Generating AI insights...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="assignmentDetailsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAssignmentDetailsModal()">&times;</span>
+            <h2 id="assignmentDetailsTitle">Assignment Details</h2>
+            <div id="assignmentDetailsContent"></div>
+        </div>
+    </div>
+
+    <div id="completedModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeCompletedModal()">&times;</span>
+            <h2>Completed Assignments</h2>
+            <div id="completedAssignmentsList" class="completed-assignments-list"></div>
+        </div>
+    </div>
+
+    <div id="deletedModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDeletedModal()">&times;</span>
+            <h2>Recently Deleted</h2>
+            <div id="deletedAssignmentsList" class="deleted-assignments-list"></div>
+        </div>
+    </div>
+
+    <div id="notesModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeNotesModal()">&times;</span>
+            <h2>Assignment Notes</h2>
+            <div id="notesAssignmentTitle" class="notes-title"></div>
+            <div class="form-group">
+                <label for="notesTextarea">Your Notes:</label>
+                <textarea id="notesTextarea" rows="8" class="textarea-full" placeholder="Add your notes, reminders, or thoughts about this assignment..."></textarea>
+            </div>
+            <div class="settings-actions">
+                <button id="saveNotesBtn" class="btn btn-primary">Save Notes</button>
+                <button onclick="closeNotesModal()" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addAssignmentModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddAssignmentModal()">&times;</span>
+            <h2>Add New Assignment</h2>
+            <div class="form-group">
+                <label for="addAssignmentTitle">Title <span class="required">*</span></label>
+                <input type="text" id="addAssignmentTitle" class="form-input" placeholder="Enter assignment title" required>
+            </div>
+            <div class="form-group">
+                <label for="addAssignmentCourse">Course <span class="required">*</span></label>
+                <select id="addAssignmentCourse" class="form-select" required>
+                    <option value="">Select a course</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="addAssignmentDueDate">Due Date <span class="required">*</span></label>
+                <input type="datetime-local" id="addAssignmentDueDate" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="addAssignmentDescription">Description</label>
+                <p class="form-hint form-hint-small">Provide a description to help AI generate a summary, time estimate, and priority suggestion.</p>
+                <textarea id="addAssignmentDescription" rows="5" class="form-input textarea-large" placeholder="Enter assignment description, requirements, or details..."></textarea>
+            </div>
+            <div class="settings-actions">
+                <button id="saveAddAssignmentBtn" class="btn btn-primary">Add Assignment</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js?v=4"></script>
 </body>
 </html>
-

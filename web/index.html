@@ -140,6 +140,14 @@
                 <p class="form-hint form-hint-indented">If enabled, assignments will be automatically added to Apple Reminders when synced. If disabled, you can manually add them using the "Add to Reminders" button on each assignment.</p>
             </div>
             
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="setupAiSummaryEnabled">
+                    <span class="checkbox-label-text">Enable AI summaries for assignments</span>
+                </label>
+                <p class="form-hint form-hint-indented">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insights will still work regardless of this setting.</p>
+            </div>
+            
             <div class="settings-actions">
                 <button id="saveAndSync" class="btn btn-primary">Save & Sync</button>
                 <button id="cancelSetup" class="btn btn-secondary">Cancel</button>
@@ -208,6 +216,14 @@
                         <span>Automatically sync assignments to Apple Reminders</span>
                     </label>
                     <p class="form-hint">If enabled, assignments will be automatically added to Apple Reminders when synced. If disabled, you can manually add them using the "Add to Reminders" button on each assignment.</p>
+                </div>
+                
+                <div class="form-group section-spacing">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="settingsAiSummaryEnabled" checked>
+                        <span>Enable AI summaries for assignments</span>
+                    </label>
+                    <p class="form-hint">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insights will still work regardless of this setting.</p>
                 </div>
             </div>
             
@@ -327,9 +343,14 @@
                 <input type="datetime-local" id="addAssignmentDueDate" class="form-input" required>
             </div>
             <div class="form-group">
-                <label for="addAssignmentDescription">Description</label>
-                <p class="form-hint form-hint-small">Provide a description to help AI generate a summary, time estimate, and priority suggestion.</p>
+                <label for="addAssignmentDescription">Description (Optional for AI)</label>
+                <p class="form-hint form-hint-small">If provided, AI will generate a summary, time estimate, and priority suggestion. Leave blank to skip AI summary generation.</p>
                 <textarea id="addAssignmentDescription" rows="5" class="form-input textarea-large" placeholder="Enter assignment description, requirements, or details..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="addAssignmentNotes">Notes</label>
+                <p class="form-hint form-hint-small">Add your personal notes, reminders, or thoughts about this assignment.</p>
+                <textarea id="addAssignmentNotes" rows="4" class="form-input textarea-large" placeholder="Add your notes here..."></textarea>
             </div>
             <div class="settings-actions">
                 <button id="saveAddAssignmentBtn" class="btn btn-primary">Add Assignment</button>

@@ -865,7 +865,7 @@ class AssignmentProcessor:
             "description": item.get("description", "")
         }
 
-    def process_assignment(self, assignment_data, reminder_list, course_name, college_name):
+    def process_assignment(self, assignment_data, reminder_list, course_name, college_name, ai_summary_enabled=True):
         if not assignment_data:
             return
 
@@ -882,7 +882,7 @@ class AssignmentProcessor:
         ai_confidence = None
         ai_confidence_explanation = None
 
-        if self.ai_enhancer and self.ai_enhancer.model:
+        if self.ai_enhancer and self.ai_enhancer.model and ai_summary_enabled:
             if existing and len(existing) > 7 and existing[7] and existing[7].strip():
                 ai_notes = existing[7]
 

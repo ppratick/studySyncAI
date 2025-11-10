@@ -841,6 +841,28 @@ h1 {
     font-weight: 600;
 }
 
+.btn-generate-ai-summary {
+    color: var(--primary-color);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 4px;
+    font-style: italic;
+    font-weight: 500;
+}
+
+.btn-generate-ai-summary:hover:not(:disabled) {
+    color: var(--primary-dark);
+    text-decoration-style: solid;
+}
+
+.btn-ai-summary-added {
+    color: var(--success-color);
+    cursor: default;
+    text-decoration: none;
+    font-style: normal;
+    font-weight: 600;
+}
+
 .btn-reminder-link:disabled {
     opacity: 0.5;
     cursor: not-allowed;

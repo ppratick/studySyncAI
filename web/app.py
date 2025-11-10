@@ -212,6 +212,10 @@ def sync_assignments():
             auto_sync_reminders = db.get_setting("auto_sync_reminders") or '0'
             auto_sync_enabled = auto_sync_reminders == '1'
             
+            ai_summary_enabled_setting = db.get_setting("ai_summary_enabled")
+            # Default to enabled ('1') for synced assignments if not explicitly set
+            ai_summary_enabled = ai_summary_enabled_setting != '0'
+            
             yield f"data: {json.dumps({'type': 'progress', 'message': 'Fetching courses...', 'progress': 5})}\n\n"
             
             now = datetime.now(EST)
@@ -293,7 +297,7 @@ def sync_assignments():
                         progress = 10 + int((processed_courses / total_courses) * 70) + int((processed_items / max(total_items, 1)) * (70 / total_courses))
                         yield f"data: {json.dumps({'type': 'progress', 'message': f'Processing {assignment_data["title"]}...', 'progress': progress, 'assignment': assignment_dict})}\n\n"
 
-                        processor.process_assignment(assignment_data, reminder_list, course_name, college_name)
+                        processor.process_assignment(assignment_data, reminder_list, course_name, college_name, ai_summary_enabled)
 
                         assignment = db.get_assignment(assignment_data['assignment_id'])
                         if assignment:
@@ -356,19 +360,25 @@ def settings():
     if request.method == 'GET':
         college_name = db.get_setting("college_name")
         auto_sync_reminders = db.get_setting("auto_sync_reminders") or '0'
+        ai_summary_enabled = db.get_setting("ai_summary_enabled")
+        # Return null if not set (so frontend can default appropriately)
+        # Only return '1' or '0' if explicitly set
         return jsonify({
             'college_name': college_name,
-            'auto_sync_reminders': auto_sync_reminders
+            'auto_sync_reminders': auto_sync_reminders,
+            'ai_summary_enabled': ai_summary_enabled
         })
     else:
         data = request.json
         college_name = data.get('college_name', '')
         auto_sync_reminders = data.get('auto_sync_reminders', '0')
+        ai_summary_enabled = data.get('ai_summary_enabled', '1')
         
         if college_name:
             db.save_setting("college_name", college_name)
         
         db.save_setting("auto_sync_reminders", auto_sync_reminders)
+        db.save_setting("ai_summary_enabled", ai_summary_enabled)
         
         return jsonify({'success': True})
 
@@ -423,7 +433,13 @@ def add_reminder_to_assignment():
 
         assignment = db.get_assignment(assignment_id)
         if not assignment:
-            return jsonify({'error': 'Assignment not found'}), 404
+            # Try to get more info for debugging
+            all_assignments = db.get_all_assignments(include_deleted=False)
+            # get_all_assignments returns assignment_id at index 0
+            assignment_ids = [a[0] for a in all_assignments if len(a) > 0]
+            return jsonify({
+                'error': f'Assignment not found. Searched ID: "{assignment_id}" (type: {type(assignment_id).__name__}). Found {len(assignment_ids)} assignments. First few IDs: {assignment_ids[:5]}'
+            }), 404
 
         title = assignment[2]
         due_at = assignment[4]
@@ -486,6 +502,67 @@ def remove_reminder_from_assignment():
         reminder_list = assignment[6]
 
         reminders_manager.remove_existing_reminder(title, reminder_list)
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/assignments/generate-ai-summary', methods=['POST'])
+def generate_ai_summary_for_assignment():
+    try:
+        if not initialize_components():
+            return jsonify({'error': 'AI not configured'}), 500
+        
+        data = request.json
+        assignment_id = data.get('assignment_id')
+        if not assignment_id:
+            return jsonify({'error': 'Missing assignment_id'}), 400
+
+        assignment = db.get_assignment(assignment_id)
+        if not assignment:
+            return jsonify({'error': 'Assignment not found'}), 404
+
+        # Check if AI summary already exists
+        existing_ai_notes = assignment[7] if len(assignment) > 7 else None
+        if existing_ai_notes and existing_ai_notes.strip():
+            return jsonify({'error': 'AI summary already exists for this assignment'}), 400
+
+        title = assignment[2]
+        description = assignment[3] if len(assignment) > 3 else ''
+        course_name = assignment[5] if len(assignment) > 5 else ''
+        college_name = db.get_setting('college_name') or ''
+
+        global ai_enhancer
+        if ai_enhancer is None:
+            ai_enhancer = AIEnhancer()
+
+        if not ai_enhancer or not ai_enhancer.model:
+            return jsonify({'error': 'AI model not available'}), 500
+
+        # Generate AI summary (works even without description)
+        ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
+            title, description, course_name, college_name
+        )
+
+        # Update the assignment with AI summary
+        db.update_assignment_fields(
+            assignment_id,
+            ai_notes=ai_notes
+        )
+
+        # Update additional fields if available
+        update_fields = {}
+        if time_estimate is not None:
+            update_fields['time_estimate'] = time_estimate
+        if suggested_priority is not None:
+            update_fields['suggested_priority'] = suggested_priority
+        if ai_confidence is not None:
+            update_fields['ai_confidence'] = ai_confidence
+        if ai_confidence_explanation is not None:
+            update_fields['ai_confidence_explanation'] = ai_confidence_explanation
+        
+        if update_fields:
+            db.update_assignment_fields(assignment_id, **update_fields)
         
         return jsonify({'success': True})
     except Exception as e:
@@ -556,6 +633,7 @@ def create_assignment():
             return jsonify({'error': 'Missing required fields'}), 400
 
         college_name = db.get_setting('college_name') or ''
+        user_notes = data.get('user_notes', '')
 
         global ai_enhancer
         if ai_enhancer is None:
@@ -567,7 +645,11 @@ def create_assignment():
         ai_confidence = None
         ai_confidence_explanation = None
         
-        if description and ai_enhancer and ai_enhancer.model:
+        ai_summary_enabled_setting = db.get_setting("ai_summary_enabled")
+        # Default to enabled ('1') for manually created assignments if not explicitly set
+        ai_summary_enabled = ai_summary_enabled_setting != '0'
+        
+        if description and description.strip() and ai_summary_enabled and ai_enhancer and ai_enhancer.model:
             ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
                 title, description, course_name, college_name
             )
@@ -586,6 +668,9 @@ def create_assignment():
                 update_fields['ai_confidence_explanation'] = ai_confidence_explanation
             if update_fields:
                 db.update_assignment_fields(assignment_id, **update_fields)
+        
+        if user_notes:
+            db.update_assignment_fields(assignment_id, user_notes=user_notes)
         
         return jsonify({'success': True})
     except Exception as e:

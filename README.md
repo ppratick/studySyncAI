@@ -1,116 +1,84 @@
-# studySyncAI
+# StudySync AI
 
-An AI-powered study management system that syncs Canvas assignments and discussion posts to Apple Reminders with intelligent analysis and personalized study planning.
+AI-powered study management system that syncs Canvas assignments to Apple Reminders with intelligent analysis.
 
 ## Features
 
-- **Canvas Integration**: Automatically syncs assignments and discussion posts from Canvas LMS
-- **AI Enhancement**: Uses Google Gemini 2.5 Flash to analyze assignments and provide study insights
-- **Smart Study Planning**: Generates personalized study strategies based on workload and deadlines
-- **Apple Reminders Integration**: Seamlessly adds assignments to macOS Reminders app
-- **SQLite Database**: Persistent storage for assignments, course mappings, and settings
-- **Modular Architecture**: Clean, organized codebase with separate modules
-- **Command Line Interface**: Run with `--ai` flag for AI-enhanced mode
-- **Web Dashboard**: Beautiful web interface for viewing and managing assignments
+- 📚 Syncs assignments from Canvas LMS
+- 🤖 AI-powered insights and summaries (Google Gemini)
+- 📅 Adds assignments to Apple Reminders
+- 💻 Web dashboard and CLI tool
 
 ## Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd studySyncAI
-   ```
+### 1. Install Dependencies
 
-2. **Create virtual environment**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
+```bash
+git clone git@github.com:ppratick/studySyncAI.git
+cd studySyncAI
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install flask requests google-generativeai python-dotenv
+```
 
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 2. Configure Environment
 
-4. **Configure environment variables**
-   Create a `.env` file with your API keys:
-   ```
-   CANVAS_API_TOKEN=your_canvas_token
-   CANVAS_DOMAIN=your_canvas_domain
-   GEMINI_API_KEY=your_gemini_key
-   ```
+Create a `.env` file in the project root:
 
-5. **Run the application**
+```env
+CANVAS_API_TOKEN=your_canvas_api_token_here
+CANVAS_DOMAIN=your-school.instructure.com
+GEMINI_API_KEY=your_gemini_api_key_here
+```
 
-   **Command Line Interface (CLI Version):**
-   - Uses database: `cli/backend/studysync-cli.db`
-   - Simple CLI without course enable/disable features
-   - ```bash
-     # Standard mode
-     python3 cli/main.py
-     
-     # AI-enhanced mode
-     python3 cli/main.py --ai
-     ```
+**Get API keys:**
+- **Canvas**: Canvas → Account → Settings → New Access Token
+- **Gemini**: [Google AI Studio](https://makersuite.google.com/app/apikey)
 
-   **Web Dashboard (Web Version):**
-   - Uses database: `web/backend/studysync-web.db`
-   - Full-featured web interface with course management
-   - ```bash
-     python3 web/app.py
-     ```
-     Then open your browser to `http://localhost:5001`
-   
-   **Note**: The CLI and Web versions use separate databases, so course mappings and settings are independent between the two versions.
+## Usage
 
-## Environment Variables
+### Web Dashboard (Recommended)
 
-- `CANVAS_API_TOKEN`: Your Canvas API token
-- `CANVAS_DOMAIN`: Your Canvas domain (e.g., `cmu.instructure.com`)
-- `GEMINI_API_KEY`: Your Google Gemini API key
+```bash
+cd web
+python3 app.py
+```
 
-## Architecture
+Open `http://localhost:5001` in your browser.
+
+**First-time setup:**
+1. Enter college/university name
+2. Set reminder list names for each course
+3. Choose whether to enable AI summaries
+4. Click "Save & Sync"
+
+### CLI Tool
+
+```bash
+cd cli
+python3 main.py        # Standard mode
+python3 main.py --ai   # AI-enhanced mode
+```
+
+## Important Notes
+
+- **Same venv**: Use the same virtual environment for both CLI and Web
+- **Separate databases**: CLI and Web use separate databases (settings are independent)
+- **Canvas favorites**: Only favorited courses are synced
+- **macOS required**: Apple Reminders integration requires macOS
+
+## Project Structure
 
 ```
 studySyncAI/
-├── cli/
-│   ├── main.py              # CLI entry point and orchestration
-│   └── backend/             # CLI backend modules
-│       ├── canvas_api.py
-│       ├── assignment_processor.py
-│       ├── ai_enhancer.py
-│       ├── reminders_manager.py
-│       └── database.py
-├── web/
-│   ├── app.py               # Flask web server and API endpoints
-│   ├── frontend/            # Web dashboard (HTML, CSS, JavaScript)
-│   │   ├── index.html
-│   │   └── static/
-│   │       ├── css/
-│   │       └── js/
-│   └── backend/             # Web backend modules
-│       ├── canvas_api.py
-│       ├── assignment_processor.py
-│       ├── ai_enhancer.py
-│       ├── reminders_manager.py
-│       └── database.py
-├── venv/                    # Shared virtual environment
-├── README.md
-└── .gitignore
+├── cli/              # CLI tool
+├── web/              # Web dashboard
+├── venv/             # Virtual environment (shared)
+└── .env              # Environment variables
 ```
 
-## Known Issues
+## Troubleshooting
 
-### Discussion Post Completion Detection
-
-**Issue**: Completed discussion posts may still be added to reminders on subsequent runs.
-
-**Cause**: Canvas API returns 403 Forbidden errors when trying to access discussion entries, preventing the script from detecting if a student has participated in a discussion.
-
-**Workaround**: Manually mark discussion posts as completed in Canvas. The script will respect this status on future runs.
-
-**Status**: Known limitation due to Canvas API restrictions.
-
-## Contributing
-
-This project is part of a Human-AI Interaction course project. Contributions and improvements are welcome!
+- **Canvas errors**: Verify API token and domain in `.env`
+- **Reminders not working**: Ensure macOS and Reminders app access
+- **AI not working**: Check GEMINI_API_KEY in `.env` (optional feature)

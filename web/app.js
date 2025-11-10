@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAssignments();
 
     attachReminderListeners();
+    attachAISummaryListeners();
 
     document.getElementById('addAssignmentBtn').addEventListener('click', openAddAssignmentModal);
     document.getElementById('syncBtn').addEventListener('click', syncAssignments);
@@ -106,6 +107,7 @@ async function loadAssignments() {
             filterAssignments();
             updateStats();
             attachReminderListeners();
+            attachAISummaryListeners();
             loadCompletedAssignments();
         }
         updateAIInsightsButtonState();
@@ -182,6 +184,13 @@ async function loadSettings() {
         if (autoSyncCheckbox) {
             autoSyncCheckbox.checked = data.auto_sync_reminders === '1' || data.auto_sync_reminders === true;
         }
+        
+        const aiSummaryCheckbox = document.getElementById('settingsAiSummaryEnabled');
+        if (aiSummaryCheckbox) {
+            // In settings modal, default to checked (enabled) if not explicitly set to '0'
+            aiSummaryCheckbox.checked = data.ai_summary_enabled !== '0';
+        }
+        
         await loadCoursesInSettings();
         await checkInsightsExist();
     } catch (error) {
@@ -396,6 +405,12 @@ function showSetupModal(showReminderListsMessage = false, assignmentIdForReminde
             const autoSyncEnabled = data.auto_sync_reminders === '1' || data.auto_sync_reminders === true;
             autoSyncCheckbox.checked = autoSyncEnabled;
 
+            const aiSummaryCheckbox = document.getElementById('setupAiSummaryEnabled');
+            if (aiSummaryCheckbox) {
+                const aiSummaryEnabled = data.ai_summary_enabled === '1';
+                aiSummaryCheckbox.checked = aiSummaryEnabled;
+            }
+
             reminderListsGroup.style.display = 'block';
 
             loadSetupCourses();
@@ -403,6 +418,10 @@ function showSetupModal(showReminderListsMessage = false, assignmentIdForReminde
         .catch(err => {
             console.error('Error loading settings:', err);
             autoSyncCheckbox.checked = false;
+            const aiSummaryCheckbox = document.getElementById('setupAiSummaryEnabled');
+            if (aiSummaryCheckbox) {
+                aiSummaryCheckbox.checked = false;
+            }
             reminderListsGroup.style.display = 'block';
             loadSetupCourses();
         });
@@ -641,6 +660,8 @@ async function saveAndSync() {
     }
 
     const autoSyncEnabled = autoSyncCheckbox.checked;
+    const aiSummaryCheckbox = document.getElementById('setupAiSummaryEnabled');
+    const aiSummaryEnabled = aiSummaryCheckbox ? aiSummaryCheckbox.checked : false;
 
     const reminderListInputs = document.querySelectorAll('.reminder-list-input');
     const coursesToUpdate = [];
@@ -687,7 +708,8 @@ async function saveAndSync() {
             },
             body: JSON.stringify({
                 college_name: newCollegeName,
-                auto_sync_reminders: autoSyncEnabled ? '1' : '0'
+                auto_sync_reminders: autoSyncEnabled ? '1' : '0',
+                ai_summary_enabled: aiSummaryEnabled ? '1' : '0'
             })
         });
 
@@ -766,6 +788,8 @@ async function saveSettings() {
 
     warningDiv.style.display = 'none';
     const autoSyncEnabled = autoSyncCheckbox ? autoSyncCheckbox.checked : false;
+    const aiSummaryCheckbox = document.getElementById('settingsAiSummaryEnabled');
+    const aiSummaryEnabled = aiSummaryCheckbox ? aiSummaryCheckbox.checked : true;
     try {
         const response = await fetch('/api/settings', {
             method: 'POST',
@@ -774,7 +798,8 @@ async function saveSettings() {
             },
             body: JSON.stringify({
                 college_name: newCollegeName,
-                auto_sync_reminders: autoSyncEnabled ? '1' : '0'
+                auto_sync_reminders: autoSyncEnabled ? '1' : '0',
+                ai_summary_enabled: aiSummaryEnabled ? '1' : '0'
             })
         });
 
@@ -1005,6 +1030,10 @@ function createAssignmentCard(assignment) {
                                 ? `<button type="button" class="btn-reminder-link btn-reminder-added" data-assignment-id="${escapeHtml(assignment.assignment_id)}" disabled>✓ Added</button>`
                                 : `<button type="button" class="btn-reminder-link btn-add-reminder" data-assignment-id="${escapeHtml(assignment.assignment_id)}">Add to Reminders</button>`
                             }
+                            ${aiNotes && aiNotes.trim()
+                                ? `<button type="button" class="btn-reminder-link btn-ai-summary-added" data-assignment-id="${escapeHtml(assignment.assignment_id)}" disabled>✓ Generated</button>`
+                                : `<button type="button" class="btn-reminder-link btn-generate-ai-summary" data-assignment-id="${escapeHtml(assignment.assignment_id)}">Generate AI Summary</button>`
+                            }
                         </div>
                     </div>
                     <div class="assignment-meta">
@@ -1100,6 +1129,7 @@ function filterAssignments() {
     updateStats(filtered);
 
     attachReminderListeners();
+    attachAISummaryListeners();
 }
 
 function attachReminderListeners() {
@@ -1109,6 +1139,15 @@ function attachReminderListeners() {
     assignmentsList.removeEventListener('click', handleReminderButtonClick);
 
     assignmentsList.addEventListener('click', handleReminderButtonClick);
+}
+
+function attachAISummaryListeners() {
+    const assignmentsList = document.getElementById('assignmentsList');
+    if (!assignmentsList) return;
+
+    assignmentsList.removeEventListener('click', handleAISummaryButtonClick);
+
+    assignmentsList.addEventListener('click', handleAISummaryButtonClick);
 }
 
 function handleReminderButtonClick(e) {
@@ -1126,13 +1165,85 @@ function handleReminderButtonClick(e) {
     return false;
 }
 
-async function addReminder(assignmentId, buttonElement) {
+function handleAISummaryButtonClick(e) {
+    const button = e.target.closest('.btn-generate-ai-summary');
+    if (!button) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    const assignmentId = button.dataset.assignmentId;
+    if (assignmentId) {
+        generateAISummary(assignmentId, button);
+    }
+    return false;
+}
+
+async function generateAISummary(assignmentId, buttonElement) {
     try {
         const assignment = assignments.find(a => a.assignment_id === assignmentId);
         if (!assignment) {
             showStatus('Assignment not found.', 'error');
             return;
         }
+        
+        buttonElement.disabled = true;
+        buttonElement.textContent = 'Generating...';
+
+        const response = await fetch('/api/assignments/generate-ai-summary', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ assignment_id: assignmentId })
+        });
+        const data = await response.json();
+        if (data.error) {
+            showStatus('Error generating AI summary: ' + data.error, 'error');
+            buttonElement.disabled = false;
+            buttonElement.textContent = 'Generate AI Summary';
+        } else {
+            showStatus('AI summary generated successfully!', 'success');
+
+            // Update the button to show it's been generated
+            buttonElement.classList.remove('btn-generate-ai-summary');
+            buttonElement.classList.add('btn-ai-summary-added');
+            buttonElement.textContent = '✓ Generated';
+            buttonElement.disabled = true;
+
+            // Update the assignment in memory
+            const assignment = assignments.find(a => a.assignment_id === assignmentId);
+            if (assignment) {
+                // Reload to get the full AI summary data
+                await loadAssignments();
+            }
+        }
+    } catch (error) {
+        showStatus('Error generating AI summary: ' + error.message, 'error');
+        buttonElement.disabled = false;
+        buttonElement.textContent = 'Generate AI Summary';
+    }
+}
+
+async function addReminder(assignmentId, buttonElement) {
+    try {
+        if (!assignmentId) {
+            showStatus('Assignment ID is missing.', 'error');
+            return;
+        }
+
+        let assignment = assignments.find(a => a.assignment_id === assignmentId);
+        if (!assignment) {
+            // Try reloading assignments in case the list is stale
+            await loadAssignments();
+            assignment = assignments.find(a => a.assignment_id === assignmentId);
+            if (!assignment) {
+                showStatus('Assignment not found. Please refresh the page.', 'error');
+                return;
+            }
+        }
+        
         if (!assignment.reminder_list || assignment.reminder_list.trim() === '') {
             showSetupModal(false, assignmentId, `Please set a reminder list name for "${assignment.course_name}" below.`);
             return;
@@ -1155,15 +1266,8 @@ async function addReminder(assignmentId, buttonElement) {
         } else {
             showStatus('Reminder added successfully!', 'success');
 
-            const assignment = assignments.find(a => a.assignment_id === assignmentId);
-            if (assignment) {
-                assignment.reminder_added = 1;
-            }
-
-            buttonElement.classList.remove('btn-add-reminder');
-            buttonElement.classList.add('btn-reminder-added');
-            buttonElement.textContent = '✓ Added';
-            buttonElement.disabled = true;
+            // Reload assignments to get the updated reminder_added status
+            await loadAssignments();
         }
     } catch (error) {
         showStatus('Error adding reminder: ' + error.message, 'error');
@@ -1817,6 +1921,7 @@ async function openAddAssignmentModal() {
     document.getElementById('addAssignmentTitle').value = '';
     document.getElementById('addAssignmentDescription').value = '';
     document.getElementById('addAssignmentDueDate').value = '';
+    document.getElementById('addAssignmentNotes').value = '';
 
     courseSelect.innerHTML = '<option value="">Select a course</option>';
     let hasValidCourses = false;
@@ -1862,6 +1967,7 @@ async function saveAddAssignment() {
     const courseName = document.getElementById('addAssignmentCourse').value;
     const dueDate = document.getElementById('addAssignmentDueDate').value;
     const description = document.getElementById('addAssignmentDescription').value.trim();
+    const userNotes = document.getElementById('addAssignmentNotes').value.trim();
 
     if (!title) {
         showStatus('Please enter an assignment title', 'error');
@@ -1915,7 +2021,8 @@ async function saveAddAssignment() {
                 description: description,
                 due_at: dueAtISO,
                 course_name: courseName,
-                reminder_list: reminderList
+                reminder_list: reminderList,
+                user_notes: userNotes
             })
         });
 

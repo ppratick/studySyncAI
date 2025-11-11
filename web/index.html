@@ -32,6 +32,10 @@
         <div id="status" class="status"></div>
         
         <div id="syncProgress" class="sync-progress" style="display: none;">
+            <div class="sync-progress-top">
+                <div id="syncProgressCount" class="sync-progress-count"></div>
+                <div id="syncProgressTime" class="sync-progress-time"></div>
+            </div>
             <div class="sync-progress-header">
                 <div class="sync-spinner"></div>
                 <span id="syncProgressText">Syncing assignments...</span>
@@ -39,7 +43,6 @@
             <div class="sync-progress-bar">
                 <div id="syncProgressBar" class="sync-progress-bar-fill"></div>
             </div>
-            <div id="syncProgressDetails" class="sync-progress-details"></div>
         </div>
 
         <div id="bulkActions" class="bulk-actions" style="display: none;">
@@ -75,55 +78,14 @@
                     <li>Your college or university name</li>
                     <li>Reminder list name for each course (required)</li>
                     <li>Whether to automatically add assignments to Apple Reminders (optional)</li>
+                    <li>Whether to enable AI summaries for assignments (optional)</li>
                 </ul>
                 <p class="info-text">You can change these settings later in the Settings page.</p>
             </div>
             
             <div class="form-group">
                 <label for="setupCollegeName">College or University <span class="required">*</span></label>
-                <select id="setupCollegeName" class="form-select">
-                    <option value="">Select your college/university</option>
-                    <option value="Arizona State University">Arizona State University</option>
-                    <option value="Boston University">Boston University</option>
-                    <option value="Carnegie Mellon University">Carnegie Mellon University</option>
-                    <option value="Columbia University">Columbia University</option>
-                    <option value="Cornell University">Cornell University</option>
-                    <option value="Duke University">Duke University</option>
-                    <option value="Georgia Institute of Technology">Georgia Institute of Technology</option>
-                    <option value="Harvard University">Harvard University</option>
-                    <option value="Johns Hopkins University">Johns Hopkins University</option>
-                    <option value="Massachusetts Institute of Technology">Massachusetts Institute of Technology</option>
-                    <option value="New York University">New York University</option>
-                    <option value="Northwestern University">Northwestern University</option>
-                    <option value="Ohio State University">Ohio State University</option>
-                    <option value="Pennsylvania State University">Pennsylvania State University</option>
-                    <option value="Princeton University">Princeton University</option>
-                    <option value="Purdue University">Purdue University</option>
-                    <option value="Rutgers University">Rutgers University</option>
-                    <option value="Stanford University">Stanford University</option>
-                    <option value="Texas A&M University">Texas A&M University</option>
-                    <option value="University of California, Berkeley">University of California, Berkeley</option>
-                    <option value="University of California, Davis">University of California, Davis</option>
-                    <option value="University of California, Irvine">University of California, Irvine</option>
-                    <option value="University of California, Los Angeles">University of California, Los Angeles</option>
-                    <option value="University of California, San Diego">University of California, San Diego</option>
-                    <option value="University of California, Santa Barbara">University of California, Santa Barbara</option>
-                    <option value="University of Chicago">University of Chicago</option>
-                    <option value="University of Florida">University of Florida</option>
-                    <option value="University of Illinois at Urbana-Champaign">University of Illinois at Urbana-Champaign</option>
-                    <option value="University of Maryland">University of Maryland</option>
-                    <option value="University of Michigan">University of Michigan</option>
-                    <option value="University of North Carolina at Chapel Hill">University of North Carolina at Chapel Hill</option>
-                    <option value="University of Pennsylvania">University of Pennsylvania</option>
-                    <option value="University of Southern California">University of Southern California</option>
-                    <option value="University of Texas at Austin">University of Texas at Austin</option>
-                    <option value="University of Virginia">University of Virginia</option>
-                    <option value="University of Washington">University of Washington</option>
-                    <option value="University of Wisconsin-Madison">University of Wisconsin-Madison</option>
-                    <option value="Yale University">Yale University</option>
-                    <option value="Other">Other (enter manually)</option>
-                </select>
-                    <input type="text" id="setupCollegeNameCustom" class="form-input" placeholder="Enter college name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
+                <input id="setupCollegeName" class="form-input college-input" placeholder="Enter your college or university" autocomplete="off" spellcheck="false">
             </div>
             
             <div class="form-group" id="setupReminderListsGroup">
@@ -165,49 +127,7 @@
                 <h3>Basic Information</h3>
                 <div class="form-group">
                     <label for="collegeName">College or University: <span class="required">*</span></label>
-                    <select id="collegeName" class="form-select">
-                        <option value="">Select your college/university</option>
-                        <option value="Arizona State University">Arizona State University</option>
-                        <option value="Boston University">Boston University</option>
-                        <option value="Carnegie Mellon University">Carnegie Mellon University</option>
-                        <option value="Columbia University">Columbia University</option>
-                        <option value="Cornell University">Cornell University</option>
-                        <option value="Duke University">Duke University</option>
-                        <option value="Georgia Institute of Technology">Georgia Institute of Technology</option>
-                        <option value="Harvard University">Harvard University</option>
-                        <option value="Johns Hopkins University">Johns Hopkins University</option>
-                        <option value="Massachusetts Institute of Technology">Massachusetts Institute of Technology</option>
-                        <option value="New York University">New York University</option>
-                        <option value="Northwestern University">Northwestern University</option>
-                        <option value="Ohio State University">Ohio State University</option>
-                        <option value="Pennsylvania State University">Pennsylvania State University</option>
-                        <option value="Princeton University">Princeton University</option>
-                        <option value="Purdue University">Purdue University</option>
-                        <option value="Rutgers University">Rutgers University</option>
-                        <option value="Stanford University">Stanford University</option>
-                        <option value="Texas A&M University">Texas A&M University</option>
-                        <option value="University of California, Berkeley">University of California, Berkeley</option>
-                        <option value="University of California, Davis">University of California, Davis</option>
-                        <option value="University of California, Irvine">University of California, Irvine</option>
-                        <option value="University of California, Los Angeles">University of California, Los Angeles</option>
-                        <option value="University of California, San Diego">University of California, San Diego</option>
-                        <option value="University of California, Santa Barbara">University of California, Santa Barbara</option>
-                        <option value="University of Chicago">University of Chicago</option>
-                        <option value="University of Florida">University of Florida</option>
-                        <option value="University of Illinois at Urbana-Champaign">University of Illinois at Urbana-Champaign</option>
-                        <option value="University of Maryland">University of Maryland</option>
-                        <option value="University of Michigan">University of Michigan</option>
-                        <option value="University of North Carolina at Chapel Hill">University of North Carolina at Chapel Hill</option>
-                        <option value="University of Pennsylvania">University of Pennsylvania</option>
-                        <option value="University of Southern California">University of Southern California</option>
-                        <option value="University of Texas at Austin">University of Texas at Austin</option>
-                        <option value="University of Virginia">University of Virginia</option>
-                        <option value="University of Washington">University of Washington</option>
-                        <option value="University of Wisconsin-Madison">University of Wisconsin-Madison</option>
-                        <option value="Yale University">Yale University</option>
-                        <option value="Other">Other (enter manually)</option>
-                    </select>
-                    <input type="text" id="collegeNameCustom" class="form-input" placeholder="Enter college name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
+                    <input id="collegeName" class="form-input college-input" placeholder="Enter your college or university" autocomplete="off" spellcheck="false">
                 </div>
                 
                 <div class="form-group section-spacing">
@@ -337,6 +257,8 @@
                 <select id="addAssignmentCourse" class="form-select" required>
                     <option value="">Select a course</option>
                 </select>
+                <input type="text" id="addAssignmentCourseCustom" class="form-input" placeholder="Enter course name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
+                <input type="text" id="addAssignmentManualReminder" class="form-input" placeholder="Reminder list name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
             </div>
             <div class="form-group">
                 <label for="addAssignmentDueDate">Due Date <span class="required">*</span></label>

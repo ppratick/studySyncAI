@@ -6,11 +6,78 @@ let courseEnableDisableChanges = {};
 let originalCourseStates = {};
 let selectedAssignments = new Set();
 let groupByCourse = false;
+let isSetupModalForced = false;
+let activeAISummaryRequests = 0;
+let activeAddReminderRequests = 0;
+let isSyncInProgress = false;
+let isInsightsModalLoading = false;
+let isAddAssignmentWorkflow = false;
+let aiSummaryEnabled = true;
 
-document.addEventListener('DOMContentLoaded', () => {
+function setButtonVisualState(button, disabled, disabledTitle) {
+    if (!button) return;
+    button.disabled = !!disabled;
+    if (disabled) {
+        button.style.opacity = '0.5';
+        button.style.cursor = 'not-allowed';
+        if (disabledTitle !== undefined) {
+            button.dataset.disabledTitle = disabledTitle;
+            button.title = disabledTitle;
+        }
+    } else {
+        button.style.opacity = '';
+        button.style.cursor = '';
+        if (disabledTitle !== undefined || button.dataset.disabledTitle !== undefined) {
+            if (button.dataset.disabledTitle !== undefined) {
+                delete button.dataset.disabledTitle;
+            }
+            button.title = '';
+        }
+    }
+}
+
+function updateSyncButtonState() {
+    const btn = document.getElementById('syncBtn');
+    if (!btn) return;
+    let disabled = false;
+    let reason;
+
+    if (isSyncInProgress) {
+        disabled = true;
+        reason = 'Sync in progress';
+    } else if (activeAddReminderRequests > 0) {
+        disabled = true;
+        reason = 'Adding reminder';
+    } else if (isInsightsModalLoading) {
+        disabled = true;
+        reason = 'AI insights are generating';
+    } else if (activeAISummaryRequests > 0) {
+        disabled = true;
+        reason = 'Please wait for AI summary generation to finish';
+    } else if (isAddAssignmentWorkflow) {
+        disabled = true;
+        reason = 'Adding assignment';
+    }
+
+    setButtonVisualState(btn, disabled, reason);
+}
+
+function refreshPrimaryButtonsState() {
+    updateSyncButtonState();
+    updateAIInsightsButtonState();
+    updateAddAssignmentButtonState();
+    updateSettingsButtonState();
+    updateAssignmentActionButtonsState();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
     loadCourses();
-    loadSettings();
     loadAssignments();
+    await loadSettings({ suppressSetupCheck: true });
+    const needsInitialSetup = await checkSetupRequired();
+    if (needsInitialSetup) {
+        showSetupModal(false, null, null, true);
+    }
 
     attachReminderListeners();
     attachAISummaryListeners();
@@ -26,7 +93,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('selectAllBtn').addEventListener('click', selectAllAssignments);
     document.getElementById('aiInsightsBtn').addEventListener('click', () => {
         const btn = document.getElementById('aiInsightsBtn');
-        if (btn.disabled) return;
+        if (
+            btn.disabled ||
+            isSyncInProgress ||
+            isInsightsModalLoading ||
+            isAddAssignmentWorkflow ||
+            activeAISummaryRequests > 0 ||
+            activeAddReminderRequests > 0
+        ) {
+            return;
+        }
         if (insightsExist && cachedInsightsEndDate) {
             showAIInsights(false, cachedInsightsEndDate);
         } else {
@@ -34,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     document.getElementById('refreshInsightsBtn').addEventListener('click', () => {
+        if (isInsightsModalLoading) return;
         closeAIInsightsModal();
         openAIInsightsDateModal(true);
     });
@@ -45,7 +122,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggleCompletedBtn').addEventListener('click', toggleCompletedSection);
     document.getElementById('toggleDeletedBtn').addEventListener('click', toggleDeletedSection);
     document.getElementById('saveAndSync').addEventListener('click', saveAndSync);
-    document.getElementById('cancelSetup').addEventListener('click', closeSetupModal);
+    document.getElementById('cancelSetup').addEventListener('click', () => {
+        if (isSetupModalForced) {
+            return;
+        }
+        closeSetupModal();
+    });
 
     const saveNotesBtn = document.getElementById('saveNotesBtn');
     if (saveNotesBtn) {
@@ -90,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal();
         }
         const setupModal = document.getElementById('setupModal');
-        if (e.target === setupModal) {
+        if (e.target === setupModal && !isSetupModalForced) {
             closeSetupModal();
         }
     });
@@ -110,28 +192,111 @@ async function loadAssignments() {
             attachAISummaryListeners();
             loadCompletedAssignments();
         }
-        updateAIInsightsButtonState();
+        refreshPrimaryButtonsState();
     } catch (error) {
         console.error('Error loading assignments:', error);
         assignments = [];
         displayAssignments([]);
-        updateAIInsightsButtonState();
+        refreshPrimaryButtonsState();
     }
 }
 
 function updateAIInsightsButtonState() {
     const btn = document.getElementById('aiInsightsBtn');
     if (!btn) return;
+
     const hasAssignments = assignments && assignments.length > 0;
-    btn.disabled = !hasAssignments;
+    let disabledReason;
+
     if (!hasAssignments) {
-        btn.title = 'Please sync assignments first';
-        btn.style.opacity = '0.5';
-        btn.style.cursor = 'not-allowed';
-    } else {
+        disabledReason = 'Please sync assignments first';
+    } else if (activeAddReminderRequests > 0) {
+        disabledReason = 'Adding reminder';
+    } else if (activeAISummaryRequests > 0) {
+        disabledReason = 'Please wait for AI summary generation to finish';
+    } else if (isSyncInProgress) {
+        disabledReason = 'Please wait for sync to complete';
+    } else if (isInsightsModalLoading) {
+        disabledReason = 'AI insights are generating';
+    } else if (isAddAssignmentWorkflow) {
+        disabledReason = 'Adding assignment';
+    }
+
+    setButtonVisualState(btn, !!disabledReason, disabledReason);
+    if (!disabledReason) {
         btn.title = '';
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
+    }
+}
+
+function updateAddAssignmentButtonState() {
+    const btn = document.getElementById('addAssignmentBtn');
+    if (!btn) return;
+    let disabled = false;
+    let reason;
+    if (isSyncInProgress) {
+        disabled = true;
+        reason = 'Sync in progress';
+    } else if (activeAddReminderRequests > 0) {
+        disabled = true;
+        reason = 'Adding reminder';
+    } else if (isInsightsModalLoading) {
+        disabled = true;
+        reason = 'AI insights are generating';
+    } else if (activeAISummaryRequests > 0) {
+        disabled = true;
+        reason = 'Please wait for AI summary generation to finish';
+    } else if (isAddAssignmentWorkflow) {
+        disabled = true;
+        reason = 'Adding assignment';
+    }
+    setButtonVisualState(btn, disabled, reason);
+}
+
+function updateSettingsButtonState() {
+    const btn = document.getElementById('settingsBtn');
+    if (!btn) return;
+    let disabled = false;
+    let reason;
+    if (isSyncInProgress) {
+        disabled = true;
+        reason = 'Sync in progress';
+    } else if (activeAddReminderRequests > 0) {
+        disabled = true;
+        reason = 'Adding reminder';
+    } else if (isInsightsModalLoading) {
+        disabled = true;
+        reason = 'AI insights are generating';
+    } else if (activeAISummaryRequests > 0) {
+        disabled = true;
+        reason = 'Please wait for AI summary generation to finish';
+    } else if (isAddAssignmentWorkflow) {
+        disabled = true;
+        reason = 'Adding assignment';
+    }
+    setButtonVisualState(btn, disabled, reason);
+}
+
+function updateAssignmentActionButtonsState() {
+    const disable =
+        isSyncInProgress ||
+        isInsightsModalLoading ||
+        activeAddReminderRequests > 0 ||
+        isAddAssignmentWorkflow ||
+        activeAISummaryRequests > 0;
+    let reason = '';
+    if (isSyncInProgress) reason = 'Sync in progress';
+    else if (isInsightsModalLoading) reason = 'AI insights are generating';
+    else if (activeAddReminderRequests > 0) reason = 'Adding reminder';
+    else if (isAddAssignmentWorkflow) reason = 'Adding assignment';
+    else if (activeAISummaryRequests > 0) reason = 'Please wait for AI summary generation to finish';
+    try {
+        document.querySelectorAll('.btn-generate-ai-summary').forEach(btn => {
+            setButtonVisualState(btn, disable, reason);
+        });
+        document.querySelectorAll('.btn-add-reminder').forEach(btn => {
+            setButtonVisualState(btn, disable, reason);
+        });
+    } catch (e) {
     }
 }
 
@@ -159,25 +324,29 @@ async function loadCourses() {
     }
 }
 
-async function loadSettings() {
+async function loadSettings({ suppressSetupCheck = false } = {}) {
     try {
         const response = await fetch('/api/settings');
         const data = await response.json();
 
         if (data.college_name) {
             collegeName = data.college_name;
-            const select = document.getElementById('collegeName');
-            const customInput = document.getElementById('collegeNameCustom');
-
-            const option = Array.from(select.options).find(opt => opt.value === data.college_name);
-            if (option) {
-                select.value = data.college_name;
-                customInput.style.display = 'none';
-            } else {
-                select.value = 'Other';
-                customInput.value = data.college_name;
-                customInput.style.display = 'block';
-            }
+            const input = document.getElementById('collegeName');
+            if (input) input.value = data.college_name;
+            const setupInput = document.getElementById('setupCollegeName');
+            if (setupInput) setupInput.value = data.college_name;
+        } else {
+            try {
+                const guessResp = await fetch('/api/college-from-canvas');
+                const guessData = await guessResp.json();
+                if (guessData && guessData.success && guessData.college) {
+                    collegeName = guessData.college;
+                    const input = document.getElementById('collegeName');
+                    if (input && !input.value) input.value = collegeName;
+                    const setupInput = document.getElementById('setupCollegeName');
+                    if (setupInput && !setupInput.value) setupInput.value = collegeName;
+                }
+            } catch (_) {}
         }
 
         const autoSyncCheckbox = document.getElementById('settingsAutoSyncReminders');
@@ -187,12 +356,19 @@ async function loadSettings() {
         
         const aiSummaryCheckbox = document.getElementById('settingsAiSummaryEnabled');
         if (aiSummaryCheckbox) {
-            // In settings modal, default to checked (enabled) if not explicitly set to '0'
             aiSummaryCheckbox.checked = data.ai_summary_enabled !== '0';
         }
+        aiSummaryEnabled = data.ai_summary_enabled !== '0';
         
         await loadCoursesInSettings();
         await checkInsightsExist();
+
+        if (!suppressSetupCheck) {
+            const needsSetup = await checkSetupRequired();
+            if (needsSetup) {
+                showSetupModal(false, null, null, true);
+            }
+        }
     } catch (error) {
         console.error('Error loading settings:', error);
     }
@@ -216,6 +392,7 @@ async function loadCoursesInSettings() {
         }
 
         coursesList.innerHTML = '';
+        const canvasCourseNames = new Set();
         data.forEach(course => {
             if (!course || !course.name) {
                 return;
@@ -224,6 +401,7 @@ async function loadCoursesInSettings() {
             const courseItem = document.createElement('div');
             const isEnabled = course.enabled === true || course.enabled === 1 || course.enabled === '1';
             const courseName = String(course.name || '');
+            canvasCourseNames.add(courseName);
 
             originalCourseStates[courseName] = isEnabled;
 
@@ -234,6 +412,7 @@ async function loadCoursesInSettings() {
             courseItem.className = `course-item ${!currentState ? 'course-disabled' : ''}`;
 
             const reminderList = course.reminder_list ? String(course.reminder_list).trim() : '';
+            const displayReminderList = reminderList || courseName;
 
             const actionButton = document.createElement('button');
             actionButton.className = currentState ? 'btn-delete' : 'btn-enable';
@@ -250,22 +429,19 @@ async function loadCoursesInSettings() {
             const reminderListSpan = document.createElement('span');
             reminderListSpan.className = 'reminder-list-editable';
 
-            const hasValidReminderList = reminderList && reminderList.trim() !== '' && reminderList.trim() !== courseName.trim();
-            reminderListSpan.textContent = hasValidReminderList ? reminderList : 'Click to set';
+            const hasValidReminderList = displayReminderList && displayReminderList.trim() !== '';
+            reminderListSpan.textContent = displayReminderList;
             reminderListSpan.dataset.courseName = courseName;
             reminderListSpan.dataset.reminderList = reminderList || '';
-            reminderListSpan.title = hasValidReminderList ? 'Click to edit reminder list name' : 'Click to set reminder list name (required)';
+            reminderListSpan.title = 'Click to edit reminder list name';
             reminderListSpan.style.cursor = 'pointer';
-            reminderListSpan.style.color = hasValidReminderList ? '#667eea' : '#d32f2f';
+            reminderListSpan.style.color = '#667eea';
             reminderListSpan.style.textDecoration = 'underline';
             reminderListSpan.style.textDecorationStyle = 'dotted';
-            reminderListSpan.style.fontWeight = hasValidReminderList ? 'normal' : '600';
+            reminderListSpan.style.fontWeight = 'normal';
 
             reminderListSpan.addEventListener('click', () => {
-                const reminderListToEdit = (reminderList && reminderList.trim() !== '' && reminderList.trim() !== courseName.trim())
-                    ? reminderList
-                    : '';
-                editReminderList(courseName, reminderListToEdit);
+                editReminderList(courseName, reminderList || courseName);
             });
 
             courseInfo.innerHTML = `
@@ -289,6 +465,68 @@ async function loadCoursesInSettings() {
             courseItem.appendChild(actionButton);
             coursesList.appendChild(courseItem);
         });
+
+        try {
+            const assignmentsResp = await fetch('/api/assignments');
+            const assignmentsData = await assignmentsResp.json();
+            if (Array.isArray(assignmentsData)) {
+                const manualNames = new Set();
+                const nameToReminder = {};
+                assignmentsData.forEach(a => {
+                    if (!a || !a.course_name) return;
+                    const name = String(a.course_name);
+                    if (canvasCourseNames.has(name)) return;
+                    manualNames.add(name);
+                    if (!nameToReminder[name] && a.reminder_list && String(a.reminder_list).trim() !== '') {
+                        nameToReminder[name] = String(a.reminder_list).trim();
+                    }
+                });
+                if (manualNames.size > 0) {
+                    const separator = document.createElement('div');
+                    separator.style.width = '100%';
+                    separator.innerHTML = `
+                        <div style="border-top: 1px solid var(--border-color); margin: 25px 0 15px;"></div>
+                        <div style="font-weight: 700; color: var(--primary-color); margin-bottom: 12px;">Manually Added Courses</div>
+                    `;
+                    coursesList.appendChild(separator);
+
+                    Array.from(manualNames).sort().forEach(courseName => {
+                        const item = document.createElement('div');
+                        item.className = 'course-item';
+                        const currentReminder = nameToReminder[courseName] || courseName;
+
+                        const courseInfo = document.createElement('div');
+                        courseInfo.className = 'course-info';
+                        courseInfo.innerHTML = `
+                            <strong>${escapeHtml(courseName)}</strong>
+                            <div style="margin-top: 4px; font-size: 0.85em;">
+                                <span style="color: #666;">Reminder List: </span>
+                            </div>
+                        `;
+
+                        const reminderSpan = document.createElement('span');
+                        reminderSpan.className = 'reminder-list-editable';
+                        reminderSpan.textContent = currentReminder;
+                        reminderSpan.dataset.courseName = courseName;
+                        reminderSpan.dataset.reminderList = currentReminder;
+                        reminderSpan.title = 'Click to edit reminder list name';
+                        reminderSpan.style.cursor = 'pointer';
+                        reminderSpan.style.color = '#667eea';
+                        reminderSpan.style.textDecoration = 'underline';
+                        reminderSpan.style.textDecorationStyle = 'dotted';
+                        reminderSpan.style.fontWeight = 'normal';
+                        reminderSpan.addEventListener('click', () => {
+                            editReminderList(courseName, currentReminder);
+                        });
+
+                        courseInfo.querySelector('div').appendChild(reminderSpan);
+                        item.appendChild(courseInfo);
+                        coursesList.appendChild(item);
+                    });
+                }
+            }
+        } catch (e) {
+        }
     } catch (error) {
         console.error('Error loading courses:', error);
         document.getElementById('coursesList').innerHTML = '<p style="color: #d32f2f;">Error loading courses</p>';
@@ -327,6 +565,25 @@ async function syncAssignments() {
         return;
     }
 
+    if (activeAddReminderRequests > 0) {
+        showStatus('Please wait for reminder addition to complete before syncing.', 'info');
+        return;
+    }
+    if (activeAISummaryRequests > 0) {
+        showStatus('Please wait for AI summary generation to finish before syncing.', 'info');
+        return;
+    }
+
+    if (isAddAssignmentWorkflow) {
+        showStatus('Please finish adding the assignment before syncing.', 'info');
+        return;
+    }
+
+    if (isInsightsModalLoading) {
+        showStatus('Please wait for AI insights to finish before syncing.', 'info');
+        return;
+    }
+
     await performSync();
 }
 
@@ -347,9 +604,8 @@ async function checkSetupRequired() {
             if (!course || !course.name) return false;
             const reminderList = course.reminder_list ? course.reminder_list.trim() : '';
             const hasReminderList = reminderList !== '';
-            const isDefaultName = reminderList === course.name;
 
-            return !hasReminderList || isDefaultName;
+            return !hasReminderList;
         });
 
         return coursesNeedingSetup.length > 0;
@@ -359,14 +615,25 @@ async function checkSetupRequired() {
     }
 }
 
-function showSetupModal(showReminderListsMessage = false, assignmentIdForReminder = null, warningMessage = null) {
+function showSetupModal(showReminderListsMessage = false, assignmentIdForReminder = null, warningMessage = null, forceModal = false) {
     const modal = document.getElementById('setupModal');
-    const collegeSelect = document.getElementById('setupCollegeName');
-    const collegeCustom = document.getElementById('setupCollegeNameCustom');
+    const collegeInput = document.getElementById('setupCollegeName');
     const autoSyncCheckbox = document.getElementById('setupAutoSyncReminders');
     const reminderListsGroup = document.getElementById('setupReminderListsGroup');
     const saveButton = document.getElementById('saveAndSync');
     const warningDiv = document.getElementById('setupWarningMessage');
+    const cancelButton = document.getElementById('cancelSetup');
+
+    isSetupModalForced = !!forceModal;
+    if (cancelButton) {
+        if (isSetupModalForced) {
+            cancelButton.style.display = 'none';
+            cancelButton.disabled = true;
+        } else {
+            cancelButton.style.display = 'inline-block';
+            cancelButton.disabled = false;
+        }
+    }
 
     if (warningMessage) {
         warningDiv.textContent = warningMessage;
@@ -384,19 +651,9 @@ function showSetupModal(showReminderListsMessage = false, assignmentIdForReminde
     }
 
     if (collegeName) {
-        const option = Array.from(collegeSelect.options).find(opt => opt.value === collegeName);
-        if (option) {
-            collegeSelect.value = collegeName;
-            collegeCustom.style.display = 'none';
-        } else {
-            collegeSelect.value = 'Other';
-            collegeCustom.value = collegeName;
-            collegeCustom.style.display = 'block';
-        }
+        collegeInput.value = collegeName;
     } else {
-        collegeSelect.value = '';
-        collegeCustom.style.display = 'none';
-        collegeCustom.value = '';
+        collegeInput.value = '';
     }
 
     fetch('/api/settings')
@@ -426,15 +683,6 @@ function showSetupModal(showReminderListsMessage = false, assignmentIdForReminde
             loadSetupCourses();
         });
 
-    collegeSelect.onchange = (e) => {
-        if (e.target.value === 'Other') {
-            collegeCustom.style.display = 'block';
-            collegeCustom.focus();
-        } else {
-            collegeCustom.style.display = 'none';
-            collegeCustom.value = '';
-        }
-    };
 
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden';
@@ -455,9 +703,8 @@ async function loadSetupCourses() {
             if (!course || !course.name) return false;
             const reminderList = course.reminder_list ? course.reminder_list.trim() : '';
             const hasReminderList = reminderList !== '';
-            const isDefaultName = reminderList === course.name;
 
-            return !hasReminderList || isDefaultName;
+            return !hasReminderList;
         });
 
         if (coursesNeedingSetup.length === 0) {
@@ -468,8 +715,11 @@ async function loadSetupCourses() {
         coursesList.innerHTML = '';
         coursesNeedingSetup.forEach(course => {
             const isEnabled = course.enabled === true || course.enabled === 1 || course.enabled === '1';
-
-            const currentReminderList = (isEnabled && course.reminder_list) ? course.reminder_list.trim() : '';
+            const defaultName = course.name ? course.name.trim() : '';
+            let currentReminderList = (isEnabled && course.reminder_list && course.reminder_list.trim()) ? course.reminder_list.trim() : '';
+            if (!currentReminderList) {
+                currentReminderList = defaultName;
+            }
             const courseItem = document.createElement('div');
             courseItem.className = 'course-item';
             courseItem.style.marginBottom = '10px';
@@ -480,7 +730,7 @@ async function loadSetupCourses() {
                     ${!isEnabled ? '<span style="margin-left: 8px; font-size: 0.85em; color: #999; font-style: italic;">(Disabled)</span>' : ''}
                     <div style="margin-top: 8px;">
                         <input type="text"
-                               class="form-select reminder-list-input"
+                               class="form-input reminder-list-input"
                                data-course-name="${escapeHtml(course.name)}"
                                placeholder="Enter reminder list name (required)"
                                value="${escapeHtml(currentReminderList)}"
@@ -513,19 +763,43 @@ async function loadSetupCourses() {
 
 async function performSync() {
     const btn = document.getElementById('syncBtn');
+    const aiInsightsBtn = document.getElementById('aiInsightsBtn');
+    const addAssignmentBtn = document.getElementById('addAssignmentBtn');
+    const settingsBtn = document.getElementById('settingsBtn');
     const progressContainer = document.getElementById('syncProgress');
+    const progressCount = document.getElementById('syncProgressCount');
+    const progressTime = document.getElementById('syncProgressTime');
     const progressText = document.getElementById('syncProgressText');
     const progressBar = document.getElementById('syncProgressBar');
-    const progressDetails = document.getElementById('syncProgressDetails');
 
-    btn.disabled = true;
+    isSyncInProgress = true;
     btn.textContent = 'Syncing...';
+    refreshPrimaryButtonsState();
+    if (addAssignmentBtn) {
+        setButtonVisualState(addAssignmentBtn, true, 'Sync in progress');
+    }
+    if (settingsBtn) {
+        setButtonVisualState(settingsBtn, true, 'Sync in progress');
+    }
+
+    const restoreAfterSync = () => {
+        isSyncInProgress = false;
+        btn.textContent = 'Sync Assignments';
+        refreshPrimaryButtonsState();
+        if (addAssignmentBtn) {
+            setButtonVisualState(addAssignmentBtn, false);
+        }
+        if (settingsBtn) {
+            setButtonVisualState(settingsBtn, false);
+        }
+    };
 
     progressContainer.style.display = 'block';
+    progressCount.textContent = '';
+    progressTime.textContent = '';
     progressText.textContent = 'Starting sync...';
     progressBar.style.width = '0%';
     progressBar.style.backgroundColor = '';
-    progressDetails.innerHTML = '';
 
     try {
         const eventSource = new EventSource('/api/sync?ai_enabled=true');
@@ -538,9 +812,11 @@ async function performSync() {
                     progressBar.style.width = data.progress + '%';
                     progressText.textContent = data.message || 'Syncing...';
 
-                    if (data.message) {
-                        progressDetails.innerHTML = `<span style="color: #666;">${escapeHtml(data.message)}</span>`;
+                    if (data.assignment_count !== undefined) {
+                        progressCount.textContent = `${data.assignment_count} assignment${data.assignment_count !== 1 ? 's' : ''} found`;
                     }
+
+                    progressTime.textContent = '';
 
                     if (data.assignment) {
                         const existingIndex = assignments.findIndex(a => a.assignment_id === data.assignment.assignment_id);
@@ -561,15 +837,14 @@ async function performSync() {
                 } else if (data.type === 'complete') {
                     eventSource.close();
                     progressBar.style.width = '100%';
-                    progressText.textContent = 'Sync complete!';
 
                     if (data.total_added > 0) {
                         showStatus(`Successfully synced ${data.total_added} new assignments!`, 'success');
-                        progressDetails.innerHTML = `<span style="color: #4caf50;">✓ Successfully synced ${data.total_added} new assignment${data.total_added === 1 ? '' : 's'}!</span>`;
                     } else {
                         showStatus('No new assignments to add. You\'re all caught up!', 'info');
-                        progressDetails.innerHTML = '<span style="color: #666;">No new assignments to add. You\'re all caught up!</span>';
                     }
+
+                    progressContainer.style.display = 'none';
 
                     await loadAssignments();
                     await loadCourses();
@@ -585,61 +860,53 @@ async function performSync() {
                         }, 2000);
                     }
 
-                    setTimeout(() => {
-                        progressContainer.style.display = 'none';
-                    }, 3000);
-
-                    btn.disabled = false;
-                    btn.textContent = 'Sync Assignments';
+                    restoreAfterSync();
                 } else if (data.type === 'error') {
                     eventSource.close();
                     showStatus('Error: ' + data.error, 'error');
-                    progressDetails.innerHTML = '<span style="color: #d32f2f;">Error: ' + escapeHtml(data.error) + '</span>';
+                    progressText.textContent = 'Error: ' + data.error;
                     progressBar.style.width = '100%';
                     progressBar.style.backgroundColor = '#d32f2f';
                     setTimeout(() => {
                         progressContainer.style.display = 'none';
                     }, 5000);
-                    btn.disabled = false;
-                    btn.textContent = 'Sync Assignments';
+                    restoreAfterSync();
                 }
             } catch (parseError) {
                 console.error('Error parsing SSE data:', parseError);
+                restoreAfterSync();
             }
         };
 
         eventSource.onerror = (error) => {
             eventSource.close();
             showStatus('Error syncing: Connection error', 'error');
-            progressDetails.innerHTML = '<span style="color: #d32f2f;">Connection error occurred</span>';
+            progressText.textContent = 'Connection error occurred';
             progressBar.style.width = '100%';
             progressBar.style.backgroundColor = '#d32f2f';
             setTimeout(() => {
                 progressContainer.style.display = 'none';
             }, 5000);
-            btn.disabled = false;
-            btn.textContent = 'Sync Assignments';
+            restoreAfterSync();
         };
 
     } catch (error) {
         showStatus('Error syncing: ' + error.message, 'error');
-        progressDetails.innerHTML = '<span style="color: #d32f2f;">Error: ' + escapeHtml(error.message) + '</span>';
+        progressText.textContent = 'Error: ' + error.message;
         progressBar.style.width = '100%';
         progressBar.style.backgroundColor = '#d32f2f';
         setTimeout(() => {
             progressContainer.style.display = 'none';
         }, 5000);
-        btn.disabled = false;
-        btn.textContent = 'Sync Assignments';
+        restoreAfterSync();
     }
 }
 
 async function saveAndSync() {
-    const collegeSelect = document.getElementById('setupCollegeName');
-    const collegeCustom = document.getElementById('setupCollegeNameCustom');
+    const collegeInput = document.getElementById('setupCollegeName');
     const autoSyncCheckbox = document.getElementById('setupAutoSyncReminders');
     const warningDiv = document.getElementById('setupWarningMessage');
-    const newCollegeName = collegeSelect.value === 'Other' ? collegeCustom.value.trim() : collegeSelect.value;
+    const newCollegeName = (collegeInput.value || '').trim();
 
     if (!newCollegeName) {
         warningDiv.textContent = 'Please select or enter your college or university name.';
@@ -647,13 +914,8 @@ async function saveAndSync() {
         warningDiv.style.background = '#f8d7da';
         warningDiv.style.borderColor = '#d32f2f';
         warningDiv.style.color = '#721c24';
-        if (collegeSelect.value === 'Other') {
-            collegeCustom.focus();
-            collegeCustom.style.borderColor = '#d32f2f';
-        } else {
-            collegeSelect.focus();
-            collegeSelect.style.borderColor = '#d32f2f';
-        }
+        collegeInput.focus();
+        collegeInput.style.borderColor = '#d32f2f';
 
         warningDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
@@ -758,15 +1020,15 @@ function closeSetupModal() {
     const modal = document.getElementById('setupModal');
     modal.style.display = 'none';
     document.body.style.overflow = '';
+    isSetupModalForced = false;
 }
 
 async function saveSettings() {
-    const select = document.getElementById('collegeName');
-    const customInput = document.getElementById('collegeNameCustom');
+    const input = document.getElementById('collegeName');
     const autoSyncCheckbox = document.getElementById('settingsAutoSyncReminders');
     const warningDiv = document.getElementById('settingsWarningMessage');
 
-    const newCollegeName = select.value === 'Other' ? customInput.value.trim() : select.value;
+    const newCollegeName = (input.value || '').trim();
 
     if (!newCollegeName) {
         warningDiv.textContent = 'Please select or enter your college or university name.';
@@ -774,13 +1036,8 @@ async function saveSettings() {
         warningDiv.style.background = '#f8d7da';
         warningDiv.style.borderColor = '#d32f2f';
         warningDiv.style.color = '#721c24';
-        if (select.value === 'Other') {
-            customInput.focus();
-            customInput.style.borderColor = '#d32f2f';
-        } else {
-            select.focus();
-            select.style.borderColor = '#d32f2f';
-        }
+        input.focus();
+        input.style.borderColor = '#d32f2f';
 
         warningDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
@@ -859,10 +1116,14 @@ function editReminderList(courseName, currentReminderList) {
         })
     })
     .then(response => response.json())
-    .then(data => {
+    .then(async data => {
         if (data.success) {
             showStatus('Reminder list updated!', 'success');
-            loadCoursesInSettings();
+            try {
+                await bulkUpdateReminderListForCourse(courseName, trimmed);
+            } catch (_) {}
+            await loadAssignments();
+            await loadCoursesInSettings();
         } else {
             showStatus('Error updating reminder list: ' + (data.error || 'Unknown error'), 'error');
         }
@@ -872,11 +1133,33 @@ function editReminderList(courseName, currentReminderList) {
     });
 }
 
+async function bulkUpdateReminderListForCourse(courseName, newReminderList) {
+    const ids = assignments
+        .filter(a => a && a.course_name === courseName)
+        .map(a => a.assignment_id);
+    if (!ids || ids.length === 0) {
+        return;
+    }
+    const res = await fetch('/api/assignments/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignment_ids: ids, fields: { reminder_list: newReminderList } })
+    });
+    const data = await res.json();
+    if (!data.success) {
+        showStatus('Updated mapping, but failed to update assignments: ' + (data.error || 'Unknown error'), 'info');
+    }
+}
+
 async function openSettings() {
+    if (activeAISummaryRequests > 0 || isAddAssignmentWorkflow || isSyncInProgress || isInsightsModalLoading || activeAddReminderRequests > 0) {
+        showStatus('Please wait for current operation to finish before opening Settings.', 'info');
+        return;
+    }
     const modal = document.getElementById('settingsModal');
     courseEnableDisableChanges = {};
     originalCourseStates = {};
-    await loadSettings();
+    await loadSettings({ suppressSetupCheck: true });
 
     const warningDiv = document.getElementById('settingsWarningMessage');
     if (warningDiv) {
@@ -1130,6 +1413,7 @@ function filterAssignments() {
 
     attachReminderListeners();
     attachAISummaryListeners();
+    updateAssignmentActionButtonsState();
 }
 
 function attachReminderListeners() {
@@ -1154,6 +1438,32 @@ function handleReminderButtonClick(e) {
     const button = e.target.closest('.btn-add-reminder');
     if (!button) return;
 
+    if (activeAddReminderRequests > 0) {
+        e.preventDefault();
+        showStatus('A reminder is currently being added. Please wait...', 'info');
+        return false;
+    }
+    if (isSyncInProgress) {
+        e.preventDefault();
+        showStatus('Please wait for sync to finish before adding reminders.', 'info');
+        return false;
+    }
+    if (isInsightsModalLoading) {
+        e.preventDefault();
+        showStatus('Please wait for AI insights to finish before adding reminders.', 'info');
+        return false;
+    }
+    if (activeAISummaryRequests > 0) {
+        e.preventDefault();
+        showStatus('Please wait for AI summary generation to finish before adding reminders.', 'info');
+        return false;
+    }
+    if (isAddAssignmentWorkflow) {
+        e.preventDefault();
+        showStatus('Please finish adding the assignment before adding reminders.', 'info');
+        return false;
+    }
+
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -1169,6 +1479,27 @@ function handleAISummaryButtonClick(e) {
     const button = e.target.closest('.btn-generate-ai-summary');
     if (!button) return;
 
+    if (isSyncInProgress) {
+        e.preventDefault();
+        showStatus('Please wait for sync to finish before generating summaries.', 'info');
+        return false;
+    }
+    if (isInsightsModalLoading) {
+        e.preventDefault();
+        showStatus('Please wait for AI insights to finish before generating summaries.', 'info');
+        return false;
+    }
+    if (activeAISummaryRequests > 0) {
+        e.preventDefault();
+        showStatus('Another AI summary is generating. Please wait...', 'info');
+        return false;
+    }
+    if (isAddAssignmentWorkflow) {
+        e.preventDefault();
+        showStatus('Please finish adding the assignment before generating summaries.', 'info');
+        return false;
+    }
+
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -1181,15 +1512,22 @@ function handleAISummaryButtonClick(e) {
 }
 
 async function generateAISummary(assignmentId, buttonElement) {
+    let stateUpdated = false;
     try {
         const assignment = assignments.find(a => a.assignment_id === assignmentId);
         if (!assignment) {
             showStatus('Assignment not found.', 'error');
             return;
         }
-        
-        buttonElement.disabled = true;
-        buttonElement.textContent = 'Generating...';
+
+        activeAISummaryRequests += 1;
+        stateUpdated = true;
+        refreshPrimaryButtonsState();
+
+        if (buttonElement) {
+            buttonElement.disabled = true;
+            buttonElement.textContent = 'Generating...';
+        }
 
         const response = await fetch('/api/assignments/generate-ai-summary', {
             method: 'POST',
@@ -1206,36 +1544,62 @@ async function generateAISummary(assignmentId, buttonElement) {
         } else {
             showStatus('AI summary generated successfully!', 'success');
 
-            // Update the button to show it's been generated
-            buttonElement.classList.remove('btn-generate-ai-summary');
-            buttonElement.classList.add('btn-ai-summary-added');
-            buttonElement.textContent = '✓ Generated';
-            buttonElement.disabled = true;
+            if (buttonElement) {
+                buttonElement.classList.remove('btn-generate-ai-summary');
+                buttonElement.classList.add('btn-ai-summary-added');
+                buttonElement.textContent = '✓ Generated';
+                buttonElement.disabled = true;
+            }
 
-            // Update the assignment in memory
-            const assignment = assignments.find(a => a.assignment_id === assignmentId);
-            if (assignment) {
-                // Reload to get the full AI summary data
+            const assignmentToUpdate = assignments.find(a => a.assignment_id === assignmentId);
+            if (assignmentToUpdate) {
                 await loadAssignments();
             }
         }
     } catch (error) {
         showStatus('Error generating AI summary: ' + error.message, 'error');
-        buttonElement.disabled = false;
-        buttonElement.textContent = 'Generate AI Summary';
+        if (buttonElement) {
+            buttonElement.disabled = false;
+            buttonElement.textContent = 'Generate AI Summary';
+        }
+    } finally {
+        if (stateUpdated) {
+            activeAISummaryRequests = Math.max(0, activeAISummaryRequests - 1);
+            refreshPrimaryButtonsState();
+        }
     }
 }
 
 async function addReminder(assignmentId, buttonElement) {
     try {
+        if (isSyncInProgress) {
+            showStatus('Please wait for sync to finish before adding reminders.', 'info');
+            return;
+        }
+        if (isInsightsModalLoading) {
+            showStatus('Please wait for AI insights to finish before adding reminders.', 'info');
+            return;
+        }
+        if (activeAISummaryRequests > 0) {
+            showStatus('Please wait for AI summary generation to finish before adding reminders.', 'info');
+            return;
+        }
+        if (isAddAssignmentWorkflow) {
+            showStatus('Please finish adding the assignment before adding reminders.', 'info');
+            return;
+        }
+
+        activeAddReminderRequests += 1;
+        refreshPrimaryButtonsState();
         if (!assignmentId) {
             showStatus('Assignment ID is missing.', 'error');
+            activeAddReminderRequests = Math.max(0, activeAddReminderRequests - 1);
+            refreshPrimaryButtonsState();
             return;
         }
 
         let assignment = assignments.find(a => a.assignment_id === assignmentId);
         if (!assignment) {
-            // Try reloading assignments in case the list is stale
             await loadAssignments();
             assignment = assignments.find(a => a.assignment_id === assignmentId);
             if (!assignment) {
@@ -1266,13 +1630,15 @@ async function addReminder(assignmentId, buttonElement) {
         } else {
             showStatus('Reminder added successfully!', 'success');
 
-            // Reload assignments to get the updated reminder_added status
             await loadAssignments();
         }
     } catch (error) {
         showStatus('Error adding reminder: ' + error.message, 'error');
         buttonElement.disabled = false;
         buttonElement.textContent = 'Add to Reminders';
+    } finally {
+        activeAddReminderRequests = Math.max(0, activeAddReminderRequests - 1);
+        refreshPrimaryButtonsState();
     }
 }
 
@@ -1546,6 +1912,10 @@ async function checkInsightsExist() {
 }
 
 function openAIInsightsDateModal(forceRefresh = false) {
+    if (isAddAssignmentWorkflow || activeAddReminderRequests > 0) {
+        showStatus('Please finish adding the assignment before generating insights.', 'info');
+        return;
+    }
     isRefreshingInsights = forceRefresh;
     const modal = document.getElementById('aiInsightsDateModal');
     const endDateInput = document.getElementById('insightsEndDate');
@@ -1610,10 +1980,14 @@ async function showAIInsights(forceRefresh = false, endDate = null) {
     const modal = document.getElementById('aiInsightsModal');
     const content = document.getElementById('aiInsightsContent');
     const refreshBtn = document.getElementById('refreshInsightsBtn');
+    const closeBtn = modal ? modal.querySelector('.close') : null;
 
+    isInsightsModalLoading = true;
+    refreshPrimaryButtonsState();
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden';
     refreshBtn.disabled = true;
+    if (closeBtn) closeBtn.style.display = 'none';
 
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -1624,12 +1998,12 @@ async function showAIInsights(forceRefresh = false, endDate = null) {
                 </div>
             `;
 
-            loadAIInsightsContent(forceRefresh, endDate, modal, content, refreshBtn);
+            loadAIInsightsContent(forceRefresh, endDate, modal, content, refreshBtn, closeBtn);
         });
     });
 }
 
-async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refreshBtn) {
+async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refreshBtn, closeBtn) {
     try {
         const targetEndDate = endDate || cachedInsightsEndDate || (() => {
             const today = new Date();
@@ -1647,6 +2021,9 @@ async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refr
         if (data.error) {
             content.innerHTML = `<div style="color: #d32f2f; padding: 20px; text-align: center;">Error: ${escapeHtml(data.error)}</div>`;
             refreshBtn.disabled = false;
+            if (closeBtn) closeBtn.style.display = '';
+            isInsightsModalLoading = false;
+            refreshPrimaryButtonsState();
             return;
         }
 
@@ -1781,17 +2158,28 @@ async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refr
 
         content.innerHTML = html;
         refreshBtn.disabled = false;
+        if (closeBtn) closeBtn.style.display = '';
+        isInsightsModalLoading = false;
+        refreshPrimaryButtonsState();
 
     } catch (error) {
         content.innerHTML = `<div style="color: #d32f2f; padding: 20px; text-align: center;">Error loading AI insights: ${escapeHtml(error.message)}</div>`;
         refreshBtn.disabled = false;
+        if (closeBtn) closeBtn.style.display = '';
+        isInsightsModalLoading = false;
+        refreshPrimaryButtonsState();
     }
 }
 
 function closeAIInsightsModal() {
+    if (isInsightsModalLoading) {
+        showStatus('Please wait for AI insights to finish loading before closing.', 'info');
+        return;
+    }
     const modal = document.getElementById('aiInsightsModal');
     modal.style.display = 'none';
     document.body.style.overflow = '';
+    refreshPrimaryButtonsState();
 }
 
 function closeAssignmentDetailsModal() {
@@ -1913,14 +2301,32 @@ async function saveNotes() {
 }
 
 async function openAddAssignmentModal() {
+    if (activeAISummaryRequests > 0 || isSyncInProgress || isInsightsModalLoading || activeAddReminderRequests > 0) {
+        showStatus('Please wait for current operation to finish before adding a new assignment.', 'info');
+        return;
+    }
+    isAddAssignmentWorkflow = true;
+    refreshPrimaryButtonsState();
     const modal = document.getElementById('addAssignmentModal');
     const courseSelect = document.getElementById('addAssignmentCourse');
+    const customCourseInput = document.getElementById('addAssignmentCourseCustom');
+    const customReminderInput = document.getElementById('addAssignmentManualReminder');
+    const existingWarning = modal.querySelector('#addAssignmentWarning');
+    if (existingWarning) {
+        existingWarning.style.display = 'none';
+    }
 
     await loadCourses();
 
     document.getElementById('addAssignmentTitle').value = '';
     document.getElementById('addAssignmentDescription').value = '';
-    document.getElementById('addAssignmentDueDate').value = '';
+    const dueInput = document.getElementById('addAssignmentDueDate');
+    dueInput.value = '';
+    dueInput.setAttribute('type', 'datetime-local');
+    dueInput.onfocus = null;
+    dueInput.onblur = null;
+    dueInput.removeAttribute('placeholder');
+    dueInput.removeAttribute('inputmode');
     document.getElementById('addAssignmentNotes').value = '';
 
     courseSelect.innerHTML = '<option value="">Select a course</option>';
@@ -1940,6 +2346,30 @@ async function openAddAssignmentModal() {
         }
     });
 
+    const otherOption = document.createElement('option');
+    otherOption.value = '__other__';
+    otherOption.textContent = 'Other';
+    courseSelect.appendChild(otherOption);
+    hasValidCourses = true;
+
+    customCourseInput.style.display = 'none';
+    customCourseInput.value = '';
+    customReminderInput.style.display = 'none';
+    customReminderInput.value = '';
+    courseSelect.onchange = () => {
+        if (courseSelect.value === '__other__') {
+            customCourseInput.style.display = 'block';
+            customCourseInput.focus();
+            customReminderInput.style.display = 'block';
+        } else {
+            customCourseInput.style.display = 'none';
+            customCourseInput.value = '';
+            customReminderInput.style.display = 'none';
+            customReminderInput.value = '';
+        }
+    };
+    courseSelect.value = '';
+
     if (!hasValidCourses) {
         showStatus('Please add at least one course with a reminder list in Settings first.', 'error');
         return;
@@ -1954,6 +2384,34 @@ function closeAddAssignmentModal() {
     const modal = document.getElementById('addAssignmentModal');
     modal.style.display = 'none';
     document.body.style.overflow = '';
+    if (!isAddingAssignment) {
+        isAddAssignmentWorkflow = false;
+        refreshPrimaryButtonsState();
+    }
+}
+
+function showAddAssignmentWarning(message) {
+    const modal = document.getElementById('addAssignmentModal');
+    if (!modal || modal.style.display !== 'block') {
+        showStatus(message, 'error');
+        return;
+    }
+    let warning = modal.querySelector('#addAssignmentWarning');
+    if (!warning) {
+        warning = document.createElement('div');
+        warning.id = 'addAssignmentWarning';
+        warning.style.background = '#f8d7da';
+        warning.style.border = '2px solid #d32f2f';
+        warning.style.borderRadius = '8px';
+        warning.style.color = '#721c24';
+        warning.style.padding = '12px 14px';
+        warning.style.marginBottom = '14px';
+        warning.style.fontWeight = '600';
+        const content = modal.querySelector('.modal-content');
+        content.insertBefore(warning, content.firstChild);
+    }
+    warning.textContent = message;
+    warning.style.display = 'block';
 }
 
 let isAddingAssignment = false;
@@ -1963,22 +2421,35 @@ async function saveAddAssignment() {
         return;
     }
 
+    isAddAssignmentWorkflow = true;
+    refreshPrimaryButtonsState();
+
     const title = document.getElementById('addAssignmentTitle').value.trim();
-    const courseName = document.getElementById('addAssignmentCourse').value;
+    const selectedCourse = document.getElementById('addAssignmentCourse').value;
+    const customCourseName = document.getElementById('addAssignmentCourseCustom').value.trim();
+    const customReminderName = document.getElementById('addAssignmentManualReminder').value.trim();
     const dueDate = document.getElementById('addAssignmentDueDate').value;
     const description = document.getElementById('addAssignmentDescription').value.trim();
     const userNotes = document.getElementById('addAssignmentNotes').value.trim();
 
     if (!title) {
-        showStatus('Please enter an assignment title', 'error');
+        showAddAssignmentWarning('Please enter an assignment title');
         return;
     }
-    if (!courseName) {
-        showStatus('Please select a course', 'error');
+    if (!selectedCourse) {
+        showAddAssignmentWarning('Please select a course');
+        return;
+    }
+    if (selectedCourse === '__other__' && !customCourseName) {
+        showAddAssignmentWarning('Please enter a course name');
+        return;
+    }
+    if (selectedCourse === '__other__' && !customReminderName) {
+        showAddAssignmentWarning('Please enter a reminder list name');
         return;
     }
     if (!dueDate) {
-        showStatus('Please select a due date', 'error');
+        showAddAssignmentWarning('Please select a due date');
         return;
     }
 
@@ -1986,24 +2457,42 @@ async function saveAddAssignment() {
     const saveBtn = document.getElementById('saveAddAssignmentBtn');
     saveBtn.disabled = true;
     saveBtn.textContent = 'Adding...';
+    refreshPrimaryButtonsState();
     closeAddAssignmentModal();
 
     const progressContainer = document.getElementById('syncProgress');
     const progressText = document.getElementById('syncProgressText');
-    const progressDetails = document.getElementById('syncProgressDetails');
+    const progressTime = document.getElementById('syncProgressTime');
+    const progressCount = document.getElementById('syncProgressCount');
+    const progressTop = document.querySelector('#syncProgress .sync-progress-top');
     progressContainer.style.display = 'block';
     progressText.textContent = 'Adding assignment...';
-    progressDetails.innerHTML = '';
+    progressTime.textContent = '';
+    if (progressCount) progressCount.textContent = '';
+    if (progressTop) progressTop.style.display = 'none';
 
     try {
-        const course = courses.find(c => (c.name || c.course_name) === courseName);
-        if (!course) {
-            throw new Error('Selected course not found');
-        }
-
-        const reminderList = course.reminder_list || '';
-        if (!reminderList || reminderList.trim() === '') {
-            throw new Error('Selected course does not have a reminder list set');
+        let finalCourseName = selectedCourse;
+        let reminderList = '';
+        if (selectedCourse === '__other__') {
+            finalCourseName = customCourseName;
+            reminderList = customReminderName;
+            try {
+                await fetch('/api/course-mapping', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ course_name: finalCourseName, reminder_list: reminderList })
+                });
+            } catch (e) {}
+        } else {
+            const course = courses.find(c => (c.name || c.course_name) === selectedCourse);
+            if (!course) {
+                throw new Error('Selected course not found');
+            }
+            reminderList = course.reminder_list || '';
+            if (!reminderList || reminderList.trim() === '') {
+                throw new Error('Selected course does not have a reminder list set');
+            }
         }
 
         const dueDateObj = new Date(dueDate);
@@ -2020,7 +2509,7 @@ async function saveAddAssignment() {
                 title: title,
                 description: description,
                 due_at: dueAtISO,
-                course_name: courseName,
+                course_name: finalCourseName,
                 reminder_list: reminderList,
                 user_notes: userNotes
             })
@@ -2028,21 +2517,77 @@ async function saveAddAssignment() {
 
         const data = await response.json();
         if (data.success) {
-            progressDetails.innerHTML = '<span style="color: #10b981;">✓ Assignment added successfully!</span>';
+            progressText.textContent = '✓ Assignment added successfully!';
             await loadAssignments();
             updateStats();
+
+            const shouldWaitForAISummary = !!description && aiSummaryEnabled;
+            if (shouldWaitForAISummary) {
+                progressText.textContent = 'Generating AI summary...';
+                try {
+                    const genResp = await fetch('/api/assignments/generate-ai-summary', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ assignment_id: assignmentId })
+                    });
+                    const genData = await genResp.json();
+                    if (genData && genData.error) {
+                        showStatus('AI summary generation error: ' + genData.error, 'error');
+                    }
+                } catch (e) {
+                    showStatus('AI summary generation error: ' + (e.message || 'Unknown'), 'error');
+                }
+
+                const aiReady = await waitForAISummary(assignmentId, 2500, 60000);
+                if (!aiReady) {
+                    showStatus('AI summary generation is taking longer than expected. You can continue.', 'info');
+                } else {
+                    progressText.textContent = '✓ AI summary generated!';
+                }
+            }
+
             setTimeout(() => {
                 progressContainer.style.display = 'none';
-            }, 2000);
+                if (progressTop) progressTop.style.display = 'flex';
+            }, 800);
+            isAddAssignmentWorkflow = false;
+            refreshPrimaryButtonsState();
         } else {
             throw new Error(data.error || 'Failed to add assignment');
         }
     } catch (error) {
         progressContainer.style.display = 'none';
+        if (progressTop) progressTop.style.display = 'flex';
         showStatus('Error adding assignment: ' + error.message, 'error');
+        isAddAssignmentWorkflow = false;
+        refreshPrimaryButtonsState();
     } finally {
         isAddingAssignment = false;
         saveBtn.disabled = false;
         saveBtn.textContent = 'Add Assignment';
     }
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForAISummary(targetAssignmentId, pollIntervalMs = 1500, timeoutMs = 120000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const a = assignments.find(x => x && x.assignment_id === targetAssignmentId);
+        if (a && a.ai_notes && String(a.ai_notes).trim().length > 0) {
+            return true;
+        }
+        try {
+            await loadAssignments();
+            const b = assignments.find(x => x && x.assignment_id === targetAssignmentId);
+            if (b && b.ai_notes && String(b.ai_notes).trim().length > 0) {
+                return true;
+            }
+        } catch (_) {
+        }
+        await sleep(pollIntervalMs);
+    }
+    return false;
 }

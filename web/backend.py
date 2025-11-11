@@ -5,12 +5,13 @@ import json
 import sqlite3
 import subprocess
 import requests
-import google.generativeai as genai
 from datetime import datetime
 from zoneinfo import ZoneInfo
 EST = ZoneInfo("America/New_York")
 from pathlib import Path
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 class Database:
     def __init__(self, db_path="studysync.db"):
@@ -459,18 +460,27 @@ class Database:
         conn.close()
 
 class AIEnhancer:
-    def __init__(self):
+    def __init__(self, ollama_model):
         load_dotenv()
+        if not ollama_model:
+            raise ValueError("ollama_model is required")
+        self.ollama_model = ollama_model
+        self.ollama_url = "http://localhost:11434/api/generate"
         self.model = self._initialize_model()
 
     def _initialize_model(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            print("WARNING: GEMINI_API_KEY not found in .env file. AI features will be disabled.")
+        
+        try:
+            response = requests.get("http://localhost:11434/api/tags", timeout=2)
+            if response.status_code == 200:
+                print(f"✓ Using Ollama with model: {self.ollama_model}")
+                return "ollama"
+            else:
+                print("WARNING: Ollama service not responding. AI features will be disabled.")
+                return None
+        except Exception as e:
+            print(f"WARNING: Ollama not available ({e}). AI features will be disabled.")
             return None
-
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-2.5-flash')
 
     def enhance_assignment(self, assignment_title, assignment_description="", course_name="", college_name=""):
         if not self.model:
@@ -540,8 +550,12 @@ Confidence: <1-5>
 
 ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>"""
 
-            response = self.model.generate_content(prompt)
-            ai_response = response.text.strip()
+            
+            if self.model == "ollama":
+                ai_response = self._call_ollama(prompt)
+            else:
+                print("  WARNING: Ollama not available. Skipping AI analysis.")
+                return "", None, None, None, None
 
             if self._validate_ai_response(ai_response):
                 time_estimate = None
@@ -590,10 +604,10 @@ ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>"""
         except Exception as e:
             error_type = self._classify_error(e)
             print(f"  WARNING: AI analysis failed for '{assignment_title[:50]}': {error_type}")
-            if "quota" in str(e).lower() or "rate" in str(e).lower():
-                print("  Suggestion: Wait a few minutes and try again, or check your API quota.")
-            elif "api" in str(e).lower() or "key" in str(e).lower():
-                print("  Suggestion: Check your GEMINI_API_KEY in .env file.")
+            if "timeout" in str(e).lower():
+                print("  Suggestion: Try a smaller/faster model, or increase timeout.")
+            elif "ollama" in str(e).lower():
+                print("  Suggestion: Make sure Ollama is running (ollama serve).")
             return "", None, None, None, None
 
     def _validate_ai_response(self, response):
@@ -609,14 +623,33 @@ ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>"""
 
         return True
 
+    def _call_ollama(self, prompt):
+        """Call Ollama API to generate response"""
+        try:
+            timeout = 120
+            
+            payload = {
+                "model": self.ollama_model,
+                "prompt": prompt,
+                "stream": False
+            }
+            response = requests.post(self.ollama_url, json=payload, timeout=timeout)
+            response.raise_for_status()
+            result = response.json()
+            return result.get("response", "").strip()
+        except requests.exceptions.Timeout as e:
+            raise Exception(f"Ollama API timeout after {timeout}s - model may be too slow.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Ollama API error: {str(e)}")
+
     def _classify_error(self, error):
         error_str = str(error).lower()
-        if "quota" in error_str or "rate" in error_str:
-            return "API rate limit exceeded"
-        elif "api" in error_str or "key" in error_str or "auth" in error_str:
-            return "API authentication error"
-        elif "timeout" in error_str or "network" in error_str:
+        if "timeout" in error_str:
+            return "Request timeout - model may be too slow"
+        elif "network" in error_str or "connection" in error_str:
             return "Network connection error"
+        elif "ollama" in error_str:
+            return "Ollama connection error"
         else:
             return "Unknown error"
 
@@ -733,8 +766,12 @@ Confidence ratings (1-5) should reflect:
 
 Return ONLY valid JSON, no other text."""
 
-            response = self.model.generate_content(prompt)
-            ai_response = response.text.strip()
+            
+            if self.model == "ollama":
+                ai_response = self._call_ollama(prompt)
+            else:
+                print("  WARNING: Ollama not available. Skipping comprehensive insights.")
+                return None
 
             json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
             if json_match:
@@ -811,8 +848,13 @@ class CanvasAPI:
             return []
 
     def get_course_items(self, course_id):
-        assignments = self.fetch_course_assignments(course_id)
-        discussions = self.fetch_course_discussions(course_id)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            assignments_future = executor.submit(self.fetch_course_assignments, course_id)
+            discussions_future = executor.submit(self.fetch_course_discussions, course_id)
+            
+            assignments = assignments_future.result()
+            discussions = discussions_future.result()
+        
         return assignments + discussions
 
 class AssignmentProcessor:

@@ -3,6 +3,7 @@ let courses = [];
 let collegeName = null;
 let pendingReminderAssignmentId = null;
 let courseEnableDisableChanges = {};
+let reminderListChanges = {};
 let originalCourseStates = {};
 let selectedAssignments = new Set();
 let groupByCourse = false;
@@ -85,7 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('addAssignmentBtn').addEventListener('click', openAddAssignmentModal);
     document.getElementById('syncBtn').addEventListener('click', syncAssignments);
     document.getElementById('settingsBtn').addEventListener('click', openSettings);
-    document.getElementById('saveSettings').addEventListener('click', saveSettings);
+    // Settings auto-save on change - no save button needed
     document.getElementById('groupByCourse').addEventListener('change', (e) => {
         groupByCourse = e.target.checked;
         filterAssignments();
@@ -335,18 +336,6 @@ async function loadSettings({ suppressSetupCheck = false } = {}) {
             if (input) input.value = data.college_name;
             const setupInput = document.getElementById('setupCollegeName');
             if (setupInput) setupInput.value = data.college_name;
-        } else {
-            try {
-                const guessResp = await fetch('/api/college-from-canvas');
-                const guessData = await guessResp.json();
-                if (guessData && guessData.success && guessData.college) {
-                    collegeName = guessData.college;
-                    const input = document.getElementById('collegeName');
-                    if (input && !input.value) input.value = collegeName;
-                    const setupInput = document.getElementById('setupCollegeName');
-                    if (setupInput && !setupInput.value) setupInput.value = collegeName;
-                }
-            } catch (_) {}
         }
 
         const autoSyncCheckbox = document.getElementById('settingsAutoSyncReminders');
@@ -412,7 +401,10 @@ async function loadCoursesInSettings() {
             courseItem.className = `course-item ${!currentState ? 'course-disabled' : ''}`;
 
             const reminderList = course.reminder_list ? String(course.reminder_list).trim() : '';
-            const displayReminderList = reminderList || courseName;
+            // Use pending change if exists, otherwise use saved value
+            const displayReminderList = reminderListChanges[courseName] !== undefined 
+                ? reminderListChanges[courseName] 
+                : (reminderList || courseName);
 
             const actionButton = document.createElement('button');
             actionButton.className = currentState ? 'btn-delete' : 'btn-enable';
@@ -432,7 +424,7 @@ async function loadCoursesInSettings() {
             const hasValidReminderList = displayReminderList && displayReminderList.trim() !== '';
             reminderListSpan.textContent = displayReminderList;
             reminderListSpan.dataset.courseName = courseName;
-            reminderListSpan.dataset.reminderList = reminderList || '';
+            reminderListSpan.dataset.reminderList = displayReminderList;
             reminderListSpan.title = 'Click to edit reminder list name';
             reminderListSpan.style.cursor = 'pointer';
             reminderListSpan.style.color = '#667eea';
@@ -482,6 +474,20 @@ async function loadCoursesInSettings() {
                     }
                 });
                 if (manualNames.size > 0) {
+                    // Fetch course mappings for manually added courses
+                    const mappingPromises = Array.from(manualNames).map(async (courseName) => {
+                        try {
+                            const mappingResp = await fetch(`/api/course-mapping?course_name=${encodeURIComponent(courseName)}`);
+                            const mappingData = await mappingResp.json();
+                            if (mappingData.reminder_list) {
+                                nameToReminder[courseName] = mappingData.reminder_list;
+                            }
+                        } catch (e) {
+                            // If no mapping exists, use assignment value or course name
+                        }
+                    });
+                    await Promise.all(mappingPromises);
+
                     const separator = document.createElement('div');
                     separator.style.width = '100%';
                     separator.innerHTML = `
@@ -493,7 +499,11 @@ async function loadCoursesInSettings() {
                     Array.from(manualNames).sort().forEach(courseName => {
                         const item = document.createElement('div');
                         item.className = 'course-item';
-                        const currentReminder = nameToReminder[courseName] || courseName;
+                        const savedReminder = nameToReminder[courseName] || courseName;
+                        // Use pending change if exists, otherwise use saved value
+                        const currentReminder = reminderListChanges[courseName] !== undefined 
+                            ? reminderListChanges[courseName] 
+                            : savedReminder;
 
                         const courseInfo = document.createElement('div');
                         courseInfo.className = 'course-info';
@@ -516,7 +526,7 @@ async function loadCoursesInSettings() {
                         reminderSpan.style.textDecorationStyle = 'dotted';
                         reminderSpan.style.fontWeight = 'normal';
                         reminderSpan.addEventListener('click', () => {
-                            editReminderList(courseName, currentReminder);
+                            editReminderList(courseName, savedReminder);
                         });
 
                         courseInfo.querySelector('div').appendChild(reminderSpan);
@@ -533,13 +543,40 @@ async function loadCoursesInSettings() {
     }
 }
 
-function toggleCourseEnabled(courseName, courseItem, actionButton) {
+async function toggleCourseEnabled(courseName, courseItem, actionButton) {
     const currentState = courseEnableDisableChanges[courseName] !== undefined
         ? courseEnableDisableChanges[courseName]
         : (originalCourseStates[courseName] !== undefined ? originalCourseStates[courseName] : true);
 
     const newState = !currentState;
     courseEnableDisableChanges[courseName] = newState;
+    
+    // Save immediately
+    try {
+        const endpoint = newState ? '/api/course-mapping/enable' : '/api/course-mapping/disable';
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ course_name: courseName })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            originalCourseStates[courseName] = newState;
+        } else {
+            // Revert on error
+            courseEnableDisableChanges[courseName] = currentState;
+            showSettingsWarning('Error updating course: ' + (data.error || 'Unknown error'), 'error');
+            return;
+        }
+    } catch (error) {
+        // Revert on error
+        courseEnableDisableChanges[courseName] = currentState;
+        showSettingsWarning('Error updating course: ' + error.message, 'error');
+        return;
+    }
 
     actionButton.className = newState ? 'btn-delete' : 'btn-enable';
     actionButton.textContent = newState ? '×' : '✓';
@@ -1031,15 +1068,9 @@ async function saveSettings() {
     const newCollegeName = (input.value || '').trim();
 
     if (!newCollegeName) {
-        warningDiv.textContent = 'Please select or enter your college or university name.';
-        warningDiv.style.display = 'block';
-        warningDiv.style.background = '#f8d7da';
-        warningDiv.style.borderColor = '#d32f2f';
-        warningDiv.style.color = '#721c24';
+        showSettingsWarning('Please select or enter your college or university name.', 'error');
         input.focus();
         input.style.borderColor = '#d32f2f';
-
-        warningDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
     }
 
@@ -1081,56 +1112,123 @@ async function saveSettings() {
 
             courseEnableDisableChanges = {};
 
-            showStatus('Settings saved!', 'success');
+            // Save reminder list changes
+            for (const [courseName, reminderList] of Object.entries(reminderListChanges)) {
+                try {
+                    await fetch('/api/course-mapping', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            course_name: courseName,
+                            reminder_list: reminderList
+                        })
+                    });
+                    // Update existing assignments for this course
+                    try {
+                        await bulkUpdateReminderListForCourse(courseName, reminderList);
+                    } catch (_) {}
+                } catch (error) {
+                    console.error(`Error updating reminder list for ${courseName}:`, error);
+                }
+            }
+
+            reminderListChanges = {};
+
+            showSettingsWarning('Settings saved!', 'success');
+            await loadAssignments();
             await loadCoursesInSettings();
             await loadCourses();
-            closeModal();
+            
+            // Close modal after a brief delay to show success message
+            setTimeout(() => {
+                closeModal();
+            }, 1000);
             const status = document.getElementById('status');
             if (status.className.includes('warning')) {
                 status.style.display = 'none';
             }
         }
     } catch (error) {
-        showStatus('Error saving settings: ' + error.message, 'error');
+        showSettingsWarning('Error saving settings: ' + error.message, 'error');
     }
 }
 
-function editReminderList(courseName, currentReminderList) {
-    const newReminderList = prompt(`Enter reminder list name for "${courseName}":`, currentReminderList || '');
+function showSettingsWarning(message, type = 'info') {
+    const warningDiv = document.getElementById('settingsWarningMessage');
+    if (!warningDiv) return;
+    
+    warningDiv.textContent = message;
+    warningDiv.style.display = 'block';
+    
+    if (type === 'error') {
+        warningDiv.style.background = '#f8d7da';
+        warningDiv.style.borderColor = '#d32f2f';
+        warningDiv.style.color = '#721c24';
+    } else if (type === 'info') {
+        warningDiv.style.background = '#d1ecf1';
+        warningDiv.style.borderColor = '#0c5460';
+        warningDiv.style.color = '#0c5460';
+    } else if (type === 'success') {
+        warningDiv.style.background = '#d4edda';
+        warningDiv.style.borderColor = '#28a745';
+        warningDiv.style.color = '#155724';
+    }
+    
+    warningDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function editReminderList(courseName, currentReminderList) {
+    // Get the current value (either pending change or original)
+    const displayValue = reminderListChanges[courseName] !== undefined 
+        ? reminderListChanges[courseName] 
+        : (currentReminderList || '');
+    
+    const newReminderList = prompt(`Enter reminder list name for "${courseName}":`, displayValue);
     if (newReminderList === null) return;
 
     const trimmed = newReminderList.trim();
     if (!trimmed) {
-        showStatus('Reminder list name cannot be empty.', 'error');
+        showSettingsWarning('Reminder list name cannot be empty.', 'error');
         return;
     }
 
-    fetch('/api/course-mapping', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            course_name: courseName,
-            reminder_list: trimmed
-        })
-    })
-    .then(response => response.json())
-    .then(async data => {
+    // Save immediately
+    try {
+        const response = await fetch('/api/course-mapping', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                course_name: courseName,
+                reminder_list: trimmed
+            })
+        });
+
+        const data = await response.json();
         if (data.success) {
-            showStatus('Reminder list updated!', 'success');
+            // Update existing assignments for this course
             try {
                 await bulkUpdateReminderListForCourse(courseName, trimmed);
             } catch (_) {}
-            await loadAssignments();
-            await loadCoursesInSettings();
+            
+            // Update the display immediately
+            const reminderSpan = document.querySelector(`.reminder-list-editable[data-course-name="${escapeHtml(courseName)}"]`);
+            if (reminderSpan) {
+                reminderSpan.textContent = trimmed;
+                reminderSpan.dataset.reminderList = trimmed;
+            }
+            
+            // Remove from pending changes since it's saved
+            delete reminderListChanges[courseName];
         } else {
-            showStatus('Error updating reminder list: ' + (data.error || 'Unknown error'), 'error');
+            showSettingsWarning('Error saving reminder list: ' + (data.error || 'Unknown error'), 'error');
         }
-    })
-    .catch(error => {
-        showStatus('Error updating reminder list: ' + error.message, 'error');
-    });
+    } catch (error) {
+        showSettingsWarning('Error saving reminder list: ' + error.message, 'error');
+    }
 }
 
 async function bulkUpdateReminderListForCourse(courseName, newReminderList) {
@@ -1147,7 +1245,8 @@ async function bulkUpdateReminderListForCourse(courseName, newReminderList) {
     });
     const data = await res.json();
     if (!data.success) {
-        showStatus('Updated mapping, but failed to update assignments: ' + (data.error || 'Unknown error'), 'info');
+        console.error('Failed to update assignments:', data.error);
+        // Don't show error to user - mapping was saved successfully
     }
 }
 
@@ -1158,6 +1257,7 @@ async function openSettings() {
     }
     const modal = document.getElementById('settingsModal');
     courseEnableDisableChanges = {};
+    reminderListChanges = {};
     originalCourseStates = {};
     await loadSettings({ suppressSetupCheck: true });
 
@@ -1170,16 +1270,48 @@ async function openSettings() {
     document.body.style.overflow = 'hidden';
 }
 
-function closeModal() {
+async function closeModal() {
     const modal = document.getElementById('settingsModal');
+    
+    // Save college name, auto sync, and AI summary settings before closing
+    const input = document.getElementById('collegeName');
+    const autoSyncCheckbox = document.getElementById('settingsAutoSyncReminders');
+    const aiSummaryCheckbox = document.getElementById('settingsAiSummaryEnabled');
+    
+    if (input && autoSyncCheckbox && aiSummaryCheckbox) {
+        const newCollegeName = (input.value || '').trim();
+        const autoSyncEnabled = autoSyncCheckbox.checked;
+        const aiSummaryEnabled = aiSummaryCheckbox ? aiSummaryCheckbox.checked : true;
+        
+        // Only save if college name is provided
+        if (newCollegeName) {
+            try {
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        college_name: newCollegeName,
+                        auto_sync_reminders: autoSyncEnabled ? '1' : '0',
+                        ai_summary_enabled: aiSummaryEnabled ? '1' : '0'
+                    })
+                });
+                collegeName = newCollegeName;
+            } catch (error) {
+                console.error('Error saving settings on close:', error);
+            }
+        }
+    }
+    
     courseEnableDisableChanges = {};
+    reminderListChanges = {};
     originalCourseStates = {};
     const warningDiv = document.getElementById('settingsWarningMessage');
     if (warningDiv) {
         warningDiv.style.display = 'none';
     }
     modal.style.display = 'none';
-
     document.body.style.overflow = '';
 }
 window.onclick = function(event) {
@@ -1188,6 +1320,7 @@ window.onclick = function(event) {
     const aiInsightsModal = document.getElementById('aiInsightsModal');
     const notesModal = document.getElementById('notesModal');
     const addAssignmentModal = document.getElementById('addAssignmentModal');
+    const settingsModal = document.getElementById('settingsModal');
 
     if (event.target === completedModal) {
         closeCompletedModal();
@@ -1203,6 +1336,9 @@ window.onclick = function(event) {
     }
     if (event.target === addAssignmentModal) {
         closeAddAssignmentModal();
+    }
+    if (event.target === settingsModal) {
+        closeModal();
     }
 }
 

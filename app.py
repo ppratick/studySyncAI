@@ -15,7 +15,7 @@ load_dotenv()
 
 app = Flask(__name__, template_folder='.', static_folder='.')
 
-db_path = str(Path(__file__).parent / "studysync-web.db")
+db_path = str(Path(__file__).parent / "studysync.db")
 db = Database(db_path=db_path)
 
 try:
@@ -625,6 +625,17 @@ def enable_course_mapping():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/course-mapping', methods=['GET'])
+def get_course_mapping():
+    try:
+        course_name = request.args.get('course_name')
+        if not course_name:
+            return jsonify({'error': 'Missing course_name'}), 400
+        reminder_list = db.get_course_mapping(course_name)
+        return jsonify({'reminder_list': reminder_list})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/assignments/add-reminder', methods=['POST'])
 def add_reminder_to_assignment():
     try:
@@ -737,10 +748,11 @@ def generate_ai_summary_for_assignment():
         course_name = assignment[5] if len(assignment) > 5 else ''
         college_name = db.get_setting('college_name') or ''
 
-        global ai_enhancer
-        if ai_enhancer is None:
-            ai_enhancer = AIEnhancer()
+        # Initialize AI if needed
+        if not initialize_components():
+            return jsonify({'error': 'AI not configured'}), 500
 
+        global ai_enhancer
         if not ai_enhancer or not ai_enhancer.model:
             return jsonify({'error': 'AI model not available'}), 500
 
@@ -810,7 +822,7 @@ def bulk_update_assignments():
         if not fields_to_update:
             return jsonify({'error': 'No fields to update'}), 400
 
-        allowed_fields = ['status', 'priority', 'reminder_added']
+        allowed_fields = ['status', 'priority', 'reminder_added', 'reminder_list']
         fields_to_update = {k: v for k, v in fields_to_update.items() if k in allowed_fields}
         
         if not fields_to_update:
@@ -840,10 +852,6 @@ def create_assignment():
         college_name = db.get_setting('college_name') or ''
         user_notes = data.get('user_notes', '')
 
-        global ai_enhancer
-        if ai_enhancer is None:
-            ai_enhancer = AIEnhancer()
-
         ai_notes = ""
         time_estimate = None
         suggested_priority = None
@@ -854,13 +862,21 @@ def create_assignment():
         
         ai_summary_enabled = ai_summary_enabled_setting != '0'
         
-        if description and description.strip() and ai_summary_enabled and ai_enhancer and ai_enhancer.model:
-            ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
-                title, description, course_name, college_name
-            )
+        # Initialize AI if needed and generate AI summary first (if enabled)
+        global ai_enhancer
+        if description and description.strip() and ai_summary_enabled:
+            if not initialize_components():
+                ai_enhancer = None
+            
+            if ai_enhancer and ai_enhancer.model:
+                ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
+                    title, description, course_name, college_name
+                )
 
+        # Save assignment only after AI processing is complete
         db.save_assignment(assignment_id, title, description, due_at, course_name, reminder_list, ai_notes)
 
+        # Update AI-generated fields if they exist
         if time_estimate is not None or suggested_priority is not None or ai_confidence is not None or ai_confidence_explanation is not None:
             update_fields = {}
             if time_estimate is not None:
@@ -874,6 +890,7 @@ def create_assignment():
             if update_fields:
                 db.update_assignment_fields(assignment_id, **update_fields)
         
+        # Update user notes if provided
         if user_notes:
             db.update_assignment_fields(assignment_id, user_notes=user_notes)
         

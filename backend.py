@@ -22,7 +22,7 @@ class Database:
     def init_database(self):
         try:
             if not self.db_path.exists():
-                print(f"Database file not found at {self.db_path}, creating new database...")
+                pass  # Database will be created automatically
             elif self.db_path.stat().st_size == 0:
                 print(f"Database file is empty at {self.db_path}, recreating...")
                 self.db_path.unlink()
@@ -473,7 +473,6 @@ class AIEnhancer:
         try:
             response = requests.get("http://localhost:11434/api/tags", timeout=2)
             if response.status_code == 200:
-                print(f"✓ Using Ollama with model: {self.ollama_model}")
                 return "ollama"
             else:
                 print("WARNING: Ollama service not responding. AI features will be disabled.")

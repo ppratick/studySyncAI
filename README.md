@@ -5,9 +5,9 @@ AI-powered study management system that syncs Canvas assignments to Apple Remind
 ## Features
 
 - 📚 Syncs assignments from Canvas LMS
-- 🤖 AI-powered insights and summaries (Google Gemini)
+- 🤖 AI-powered insights and summaries (Ollama)
 - 📅 Adds assignments to Apple Reminders
-- 💻 Web dashboard and CLI tool
+- 💻 Web dashboard
 
 ## Setup
 
@@ -18,7 +18,7 @@ git clone git@github.com:ppratick/studySyncAI.git
 cd studySyncAI
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install flask requests google-generativeai python-dotenv
+pip install flask requests python-dotenv
 ```
 
 ### 2. Configure Environment
@@ -28,19 +28,16 @@ Create a `.env` file in the project root:
 ```env
 CANVAS_API_TOKEN=your_canvas_api_token_here
 CANVAS_DOMAIN=your-school.instructure.com
-GEMINI_API_KEY=your_gemini_api_key_here
+OLLAMA_MODEL=your_ollama_model_name  # Optional, for AI features (e.g., llama3.2, mistral)
 ```
 
 **Get API keys:**
 - **Canvas**: Canvas → Account → Settings → New Access Token
-- **Gemini**: [Google AI Studio](https://makersuite.google.com/app/apikey)
+- **Ollama**: Install from [ollama.ai](https://ollama.ai) and pull a model (e.g., `ollama pull llama3.2`)
 
 ## Usage
 
-### Web Dashboard (Recommended)
-
 ```bash
-cd web
 python3 app.py
 ```
 
@@ -52,28 +49,22 @@ Open `http://localhost:5001` in your browser.
 3. Choose whether to enable AI summaries
 4. Click "Save & Sync"
 
-### CLI Tool
-
-```bash
-cd cli
-python3 main.py        # Standard mode
-python3 main.py --ai   # AI-enhanced mode
-```
-
 ## Important Notes
 
-- **Same venv**: Use the same virtual environment for both CLI and Web
-- **Separate databases**: CLI and Web use separate databases (settings are independent)
 - **Canvas favorites**: Only favorited courses are synced
 - **macOS required**: Apple Reminders integration requires macOS
+- **AI features**: Require Ollama to be running locally (`ollama serve`)
 
 ## Project Structure
 
 ```
 studySyncAI/
-├── cli/              # CLI tool
-├── web/              # Web dashboard
-├── venv/             # Virtual environment (shared)
+├── app.py            # Web dashboard (Flask app)
+├── backend.py        # Backend code
+├── index.html        # Web UI
+├── app.js            # Web frontend JavaScript
+├── style.css         # Web UI styles
+├── venv/             # Virtual environment
 └── .env              # Environment variables
 ```
 
@@ -81,4 +72,4 @@ studySyncAI/
 
 - **Canvas errors**: Verify API token and domain in `.env`
 - **Reminders not working**: Ensure macOS and Reminders app access
-- **AI not working**: Check GEMINI_API_KEY in `.env` (optional feature)
+- **AI not working**: Check `OLLAMA_MODEL` in `.env` and ensure Ollama is running (`ollama serve`)

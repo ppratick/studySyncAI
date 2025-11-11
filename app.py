@@ -1,7 +1,14 @@
+"""
+Flask backend application for StudySync AI.
+Handles API routes, Canvas integration, assignment syncing, and AI insights generation.
+"""
+
 import os
 import json
 import requests
 import sqlite3
+import time
+import traceback
 from datetime import datetime
 from zoneinfo import ZoneInfo
 EST = ZoneInfo("America/New_York")
@@ -17,30 +24,6 @@ app = Flask(__name__, template_folder='.', static_folder='.')
 
 db_path = str(Path(__file__).parent / "studysync.db")
 db = Database(db_path=db_path)
-
-try:
-    db.init_database()
-    
-    test_conn = sqlite3.connect(db_path)
-    test_cursor = test_conn.cursor()
-    test_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
-    if not test_cursor.fetchone():
-        print("WARNING: Settings table not found, re-initializing database...")
-        db.init_database()
-    test_conn.close()
-except Exception as e:
-    print(f"Error initializing database: {e}")
-    import traceback
-    traceback.print_exc()
-    
-    try:
-        if os.path.exists(db_path):
-            os.remove(db_path)
-        print("Recreating database...")
-        db = Database(db_path=db_path)
-    except Exception as e2:
-        print(f"Failed to recreate database: {e2}")
-        traceback.print_exc()
 ai_enhancer = None
 reminders_manager = RemindersManager()
 canvas_api = None
@@ -48,21 +31,20 @@ processor = None
 
 def initialize_components():
     global ai_enhancer, canvas_api, processor
-    
+
     api_token = os.getenv("CANVAS_API_TOKEN")
     canvas_domain = os.getenv("CANVAS_DOMAIN")
-    
+
     if not api_token or not canvas_domain:
         return False
-    
+
     canvas_api = CanvasAPI(api_token, canvas_domain)
-    
-    
+
     ollama_model = os.getenv("OLLAMA_MODEL")
     if not ollama_model:
         print("ERROR: OLLAMA_MODEL not set in .env file. AI features will be disabled.")
         return False
-    
+
     ai_enhancer = AIEnhancer(ollama_model=ollama_model)
     processor = AssignmentProcessor(db, ai_enhancer, reminders_manager)
     return True
@@ -86,10 +68,6 @@ def style_css():
 @app.route('/app.js')
 def app_js():
     return send_from_directory('.', 'app.js', mimetype='application/javascript')
-
-@app.route('/colleges.csv')
-def colleges_csv():
-    return send_from_directory('.', 'colleges.csv', mimetype='text/csv')
 
 @app.route('/api/assignments')
 def get_assignments():
@@ -143,7 +121,7 @@ def delete_assignment():
         assignment_id = data.get('assignment_id')
         if not assignment_id:
             return jsonify({'error': 'Missing assignment_id'}), 400
-        
+
         db.delete_assignment(assignment_id)
         return jsonify({'success': True})
     except Exception as e:
@@ -156,7 +134,7 @@ def restore_assignment():
         assignment_id = data.get('assignment_id')
         if not assignment_id:
             return jsonify({'error': 'Missing assignment_id'}), 400
-        
+
         db.restore_assignment(assignment_id)
         return jsonify({'success': True})
     except Exception as e:
@@ -169,7 +147,7 @@ def permanently_delete_assignment():
         assignment_id = data.get('assignment_id')
         if not assignment_id:
             return jsonify({'error': 'Missing assignment_id'}), 400
-        
+
         db.permanently_delete_assignment(assignment_id)
         return jsonify({'success': True})
     except Exception as e:
@@ -178,28 +156,26 @@ def permanently_delete_assignment():
 @app.route('/api/courses')
 def get_courses():
     try:
-        # Get all courses from database (includes manually added ones)
         db_courses = db.get_all_courses_from_db()
         db_course_names = {c['name']: c for c in db_courses}
-        
+
         result = []
-        
-        # Try to get Canvas courses if configured
+
         api_token = os.getenv("CANVAS_API_TOKEN")
         canvas_domain = os.getenv("CANVAS_DOMAIN")
         if api_token and canvas_domain:
             try:
                 headers = {"Authorization": f"Bearer {api_token}"}
                 base_url = f"https://{canvas_domain}/api/v1"
-                
+
                 response = requests.get(f"{base_url}/users/self/favorites/courses", headers=headers)
                 response.raise_for_status()
                 canvas_courses = response.json()
-                
+
                 for course in canvas_courses:
                     course_name = course.get("name", "Unnamed Course")
                     db_course = db_course_names.get(course_name)
-                    
+
                     if db_course:
                         reminder_list = db_course['reminder_list']
                         enabled = db_course['enabled']
@@ -208,7 +184,7 @@ def get_courses():
                         if reminder_list is None:
                             reminder_list = ''
                             enabled = True
-                    
+
                     result.append({
                         'id': course.get('id'),
                         'name': course_name,
@@ -216,10 +192,8 @@ def get_courses():
                         'enabled': enabled if enabled is not None else True
                     })
             except Exception as e:
-                # If Canvas API fails, just use database courses
                 pass
-        
-        # Add manually added courses that aren't in Canvas
+
         for db_course in db_courses:
             if not any(c.get('name') == db_course['name'] for c in result):
                 result.append({
@@ -228,7 +202,7 @@ def get_courses():
                     'reminder_list': db_course['reminder_list'] or '',
                     'enabled': db_course['enabled']
                 })
-        
+
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -240,7 +214,7 @@ def sync_assignments():
             if not initialize_components():
                 yield f"data: {json.dumps({'error': 'Canvas API not configured'})}\n\n"
                 return
-            
+
             college_name = db.get_setting("college_name")
             if not college_name:
                 yield f"data: {json.dumps({'error': 'College name not set. Please set it in Settings before syncing.'})}\n\n"
@@ -248,58 +222,53 @@ def sync_assignments():
 
             auto_sync_reminders = db.get_setting("auto_sync_reminders") or '0'
             auto_sync_enabled = auto_sync_reminders == '1'
-            
+
             ai_summary_enabled_setting = db.get_setting("ai_summary_enabled")
-            
+
             ai_summary_enabled = ai_summary_enabled_setting != '0'
-            
-            
+
             now = datetime.now(EST)
-            
+
             api_token = os.getenv("CANVAS_API_TOKEN")
             canvas_domain = os.getenv("CANVAS_DOMAIN")
             headers = {"Authorization": f"Bearer {api_token}"}
             base_url = f"https://{canvas_domain}/api/v1"
-            
+
             response = requests.get(f"{base_url}/users/self/favorites/courses", headers=headers)
             response.raise_for_status()
             favorite_courses = response.json()
-            
+
             total_added = 0
             added_by_course = {}
-            total_courses = len(favorite_courses)
-            processed_courses = 0
-            
-            
+
             enabled_courses = []
             for course in favorite_courses:
                 course_id = course.get("id")
                 course_name = course.get("name", "Unnamed Course")
-                
+
                 if not course_id:
                     continue
-                
+
                 reminder_list, enabled = db.get_course_mapping_with_enabled(course_name)
                 if enabled == 0:
                     continue
 
                 if not reminder_list or reminder_list.strip() == '':
                     continue
-                
+
                 enabled_courses.append({
                     'id': course_id,
                     'name': course_name,
                     'reminder_list': reminder_list
                 })
-            
-            
+
             course_data = {}
             with ThreadPoolExecutor(max_workers=min(5, len(enabled_courses))) as executor:
                 future_to_course = {
                     executor.submit(canvas_api.get_course_items, course['id']): course
                     for course in enabled_courses
                 }
-                
+
                 for future in as_completed(future_to_course):
                     course = future_to_course[future]
                     try:
@@ -314,72 +283,67 @@ def sync_assignments():
                             'course': course,
                             'items': []
                         }
-            
-            
+
             all_assignments_to_process = []
-            
-            
+
             for course_id, data in course_data.items():
                 course = data['course']
                 course_name = course['name']
                 reminder_list = course['reminder_list']
                 items = data['items']
-                
+
                 if not items:
                     continue
-                
+
                 items.sort(key=get_due_date)
-                
+
                 for item in items:
                     should_process, assignment_data = processor.should_process_assignment(item, now)
                     if should_process:
-                        
                         existing = db.get_assignment(assignment_data['assignment_id'])
                         needs_ai = (ai_summary_enabled and
                                    ai_enhancer and
                                    ai_enhancer.model and
                                    (not existing or not existing[7] or not existing[7].strip()))
-                        
+
                         all_assignments_to_process.append({
                             'assignment_data': assignment_data,
                             'course_name': course_name,
                             'reminder_list': reminder_list,
                             'needs_ai': needs_ai
                         })
-            
-            
-            import time
+
             total_assignments_for_reminders = len(all_assignments_to_process)
             assignments_needing_ai = [a for a in all_assignments_to_process if a['needs_ai']] if all_assignments_to_process else []
-            
+
             total_ai_time = len(assignments_needing_ai) * 3.5 if assignments_needing_ai else 0
             total_reminder_time = total_assignments_for_reminders * 1.5 if auto_sync_enabled else 0
             total_estimated_time = total_ai_time + total_reminder_time
-            
+
             phase_start_time = None
             ai_results = {}
-            
+
             if all_assignments_to_process:
                 total_assignments_count = len(all_assignments_to_process)
                 yield f"data: {json.dumps({'type': 'progress', 'assignment_count': total_assignments_count, 'message': 'Fetching courses...', 'progress': 0})}\n\n"
-                
+
                 if assignments_needing_ai and ai_enhancer and ai_enhancer.model and ai_summary_enabled:
                     phase_start_time = time.time()
                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Generating AI summaries...', 'progress': 0})}\n\n"
-                    
+
                     def process_ai_assignment(assignment_info):
                         try:
                             assignment_data = assignment_info['assignment_data']
                             course_name = assignment_info['course_name']
                             reminder_list = assignment_info['reminder_list']
-                            
+
                             title = assignment_data["title"]
                             description = assignment_data.get("description", "")
-                            
+
                             ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
                                 title, description, course_name, college_name
                             )
-                            
+
                             return {
                                 'assignment_data': assignment_data,
                                 'course_name': course_name,
@@ -402,14 +366,13 @@ def sync_assignments():
                                 'ai_confidence': None,
                                 'ai_confidence_explanation': None
                             }
-                    
-                    
+
                     with ThreadPoolExecutor(max_workers=1) as executor:
                         future_to_assignment = {
                             executor.submit(process_ai_assignment, assignment_info): assignment_info
                             for assignment_info in assignments_needing_ai
                         }
-                        
+
                         completed = 0
                         for future in as_completed(future_to_assignment):
                             assignment_info = future_to_assignment[future]
@@ -417,15 +380,15 @@ def sync_assignments():
                                 result = future.result()
                                 assignment_id = result['assignment_data']['assignment_id']
                                 ai_results[assignment_id] = result
-                                
+
                                 completed += 1
-                                
+
                                 if total_estimated_time > 0:
                                     ai_progress = (completed / len(assignments_needing_ai)) * (total_ai_time / total_estimated_time * 100)
                                     progress = int(ai_progress)
                                 else:
                                     progress = int((completed / len(assignments_needing_ai)) * 100) if len(assignments_needing_ai) > 0 else 0
-                                
+
                                 yield f"data: {json.dumps({'type': 'progress', 'message': 'Generating AI summaries...', 'progress': progress})}\n\n"
                             except Exception as e:
                                 print(f"Error in AI processing: {e}")
@@ -435,61 +398,52 @@ def sync_assignments():
                 elif not auto_sync_enabled and (not assignments_needing_ai or not ai_summary_enabled):
                     phase_start_time = time.time()
                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Processing assignments...', 'progress': 0})}\n\n"
-            
-            
-            processed_courses = 0
+
             reminders_added = 0
             reminder_phase_start_time = None
-            
+
             for course_id, data in course_data.items():
                 course = data['course']
                 course_name = course['name']
                 reminder_list = course['reminder_list']
                 items = data['items']
-                
+
                 if not items:
-                    processed_courses += 1
                     continue
-                
+
                 items.sort(key=get_due_date)
 
                 new_assignments = 0
                 new_items = []
-                
+
                 for item in items:
                     should_process, assignment_data = processor.should_process_assignment(item, now)
                     if should_process:
                         assignment_id = assignment_data['assignment_id']
-                        
-                        # Skip if assignment is permanently deleted (in deleted_assignments)
+
                         if db.is_assignment_permanently_deleted(assignment_id):
                             continue
-                        
-                        # Skip if assignment is deleted (in Recently Deleted)
+
                         existing = db.get_assignment(assignment_id)
-                        if existing and existing[12] == 1:  # deleted = 1
+                        if existing and existing[14] == 1:
                             continue
-                        
+
                         new_assignments += 1
                         new_items.append((assignment_data["title"], assignment_data["display_due"]))
-                        
-                        
+
                         if assignment_id in ai_results:
-                            
                             ai_result = ai_results[assignment_id]
                             ai_notes = ai_result['ai_notes']
                             time_estimate = ai_result['time_estimate']
                             suggested_priority = ai_result['suggested_priority']
                             ai_confidence = ai_result['ai_confidence']
                             ai_confidence_explanation = ai_result['ai_confidence_explanation']
-                            
-                            
+
                             db.save_assignment(assignment_id, assignment_data['title'],
                                              assignment_data.get('description', ''),
                                              assignment_data['due_at'],
                                              course_name, reminder_list, ai_notes)
-                            
-                            
+
                             update_fields = {}
                             if time_estimate is not None:
                                 update_fields['time_estimate'] = time_estimate
@@ -502,10 +456,8 @@ def sync_assignments():
                             if update_fields:
                                 db.update_assignment_fields(assignment_id, **update_fields)
                         else:
-                            
                             processor.process_assignment(assignment_data, reminder_list, course_name, college_name, ai_summary_enabled)
-                        
-                        
+
                         assignment = db.get_assignment(assignment_id)
                         if assignment:
                             assignment_dict = {
@@ -517,23 +469,23 @@ def sync_assignments():
                                 'reminder_list': assignment[6],
                                 'ai_notes': assignment[7] if len(assignment) > 7 else None,
                                 'reminder_added': assignment[8] if len(assignment) > 8 else 0,
-                                'status': assignment[9] if len(assignment) > 9 else 'Not Started',
-                                'priority': assignment[10] if len(assignment) > 10 else 'Medium',
-                                'user_notes': assignment[11] if len(assignment) > 11 else '',
-                                'deleted': assignment[12] if len(assignment) > 12 else 0,
-                                'time_estimate': assignment[13] if len(assignment) > 13 else None,
-                                'suggested_priority': assignment[14] if len(assignment) > 14 else None,
-                                'ai_confidence': assignment[15] if len(assignment) > 15 else None,
-                                'ai_confidence_explanation': assignment[16] if len(assignment) > 16 else None
+                                'status': assignment[11] if len(assignment) > 11 else 'Not Started',
+                                'priority': assignment[12] if len(assignment) > 12 else 'Medium',
+                                'user_notes': assignment[13] if len(assignment) > 13 else '',
+                                'deleted': assignment[14] if len(assignment) > 14 else 0,
+                                'time_estimate': assignment[16] if len(assignment) > 16 else None,
+                                'suggested_priority': assignment[17] if len(assignment) > 17 else None,
+                                'ai_confidence': assignment[18] if len(assignment) > 18 else None,
+                                'ai_confidence_explanation': assignment[19] if len(assignment) > 19 else None
                             }
 
                             if phase_start_time is not None:
                                 if auto_sync_enabled:
                                     if reminder_phase_start_time is None:
                                         reminder_phase_start_time = time.time()
-                                    
+
                                     reminders_added += 1
-                                    
+
                                     if total_estimated_time > 0:
                                         ai_progress = (total_ai_time / total_estimated_time * 100) if total_ai_time > 0 else 0
                                         reminder_progress = (reminders_added / total_assignments_for_reminders) * (total_reminder_time / total_estimated_time * 100) if total_reminder_time > 0 and total_assignments_for_reminders > 0 else 0
@@ -541,7 +493,7 @@ def sync_assignments():
                                     else:
                                         reminder_progress = (reminders_added / total_assignments_for_reminders) * 100 if total_assignments_for_reminders > 0 else 0
                                         progress = int(reminder_progress)
-                                    
+
                                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Adding reminders...', 'progress': progress, 'assignment': assignment_dict})}\n\n"
                                 else:
                                     if total_estimated_time > 0:
@@ -549,17 +501,6 @@ def sync_assignments():
                                     else:
                                         ai_progress = 100 if len(assignments_needing_ai) > 0 and ai_summary_enabled else 0
                                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Processing assignments...', 'progress': ai_progress, 'assignment': assignment_dict})}\n\n"
-                            else:
-                                progress_val = 0
-                                if phase_start_time is not None:
-                                    if total_estimated_time > 0:
-                                        if total_ai_time > 0:
-                                            progress_val = int((total_ai_time / total_estimated_time) * 100)
-                                        elif total_reminder_time > 0:
-                                            progress_val = 0
-                                    else:
-                                        progress_val = 0
-                                yield f"data: {json.dumps({'type': 'progress', 'message': 'Processing assignments...', 'progress': progress_val, 'assignment': assignment_dict})}\n\n"
 
                             if auto_sync_enabled:
                                 try:
@@ -567,31 +508,29 @@ def sync_assignments():
                                     title = assignment[2]
                                     reminder_list_name = assignment[6]
                                     ai_notes = assignment[7] if len(assignment) > 7 else ""
-                                    
+
                                     due_date_utc = datetime.strptime(due_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=ZoneInfo("UTC"))
                                     local_due = due_date_utc.astimezone(EST)
                                     apple_due = local_due.strftime("%A, %B %d, %Y at %I:%M:%S %p")
-                                    
+
                                     reminders_manager.add_reminder(title, apple_due, reminder_list_name, ai_notes or "")
                                     db.mark_reminder_added(assignment_dict['assignment_id'])
                                 except Exception as e:
                                     print(f"Error adding reminder for {title}: {e}")
-                
+
                 if new_assignments > 0:
                     added_by_course[course_name] = new_items
                     total_added += new_assignments
-                
-                processed_courses += 1
 
             db.set_last_sync_timestamp(datetime.now(EST).isoformat())
-            
+
             if phase_start_time is not None:
                 yield f"data: {json.dumps({'type': 'progress', 'message': 'Finishing up...', 'progress': 100})}\n\n"
-            
+
             yield f"data: {json.dumps({'type': 'complete', 'total_added': total_added, 'added_by_course': added_by_course, 'progress': 100})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
-    
+
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @app.route('/api/settings', methods=['GET', 'POST'])
@@ -600,8 +539,7 @@ def settings():
         college_name = db.get_setting("college_name")
         auto_sync_reminders = db.get_setting("auto_sync_reminders") or '0'
         ai_summary_enabled = db.get_setting("ai_summary_enabled")
-        
-        
+
         return jsonify({
             'college_name': college_name,
             'auto_sync_reminders': auto_sync_reminders,
@@ -612,13 +550,13 @@ def settings():
         college_name = data.get('college_name', '')
         auto_sync_reminders = data.get('auto_sync_reminders', '0')
         ai_summary_enabled = data.get('ai_summary_enabled', '1')
-        
+
         if college_name:
             db.save_setting("college_name", college_name)
-        
+
         db.save_setting("auto_sync_reminders", auto_sync_reminders)
         db.save_setting("ai_summary_enabled", ai_summary_enabled)
-        
+
         return jsonify({'success': True})
 
 @app.route('/api/course-mapping', methods=['POST'])
@@ -627,7 +565,7 @@ def update_course_mapping():
         data = request.json
         course_name = data.get('course_name')
         reminder_list = data.get('reminder_list')
-        
+
         if course_name and reminder_list:
             db.save_course_mapping(course_name, reminder_list)
             return jsonify({'success': True})
@@ -687,7 +625,7 @@ def add_reminder_to_assignment():
     try:
         if not initialize_components():
             return jsonify({'error': 'Canvas API not configured'}), 500
-        
+
         data = request.json
         assignment_id = data.get('assignment_id')
         if not assignment_id:
@@ -695,9 +633,8 @@ def add_reminder_to_assignment():
 
         assignment = db.get_assignment(assignment_id)
         if not assignment:
-            
             all_assignments = db.get_all_assignments(include_deleted=False)
-            
+
             assignment_ids = [a[0] for a in all_assignments if len(a) > 0]
             return jsonify({
                 'error': f'Assignment not found. Searched ID: "{assignment_id}" (type: {type(assignment_id).__name__}). Found {len(assignment_ids)} assignments. First few IDs: {assignment_ids[:5]}'
@@ -716,14 +653,14 @@ def add_reminder_to_assignment():
                 "%Y-%m-%dT%H:%M:%S",
                 "%Y-%m-%d %H:%M:%S"
             ]
-            
+
             for fmt in date_formats:
                 try:
                     due_date_utc = datetime.strptime(due_at, fmt).replace(tzinfo=ZoneInfo("UTC"))
                     break
                 except ValueError:
                     continue
-            
+
             if due_date_utc is None:
                 try:
                     due_date_utc = datetime.fromisoformat(due_at.replace('Z', '+00:00'))
@@ -731,7 +668,7 @@ def add_reminder_to_assignment():
                         due_date_utc = due_date_utc.replace(tzinfo=ZoneInfo("UTC"))
                 except (ValueError, TypeError):
                     raise ValueError(f"Could not parse date: {due_at}")
-            
+
             local_due = due_date_utc.astimezone(EST)
             apple_due = local_due.strftime("%A, %B %d, %Y at %I:%M:%S %p")
         except Exception as e:
@@ -740,7 +677,7 @@ def add_reminder_to_assignment():
         reminders_manager.add_reminder(title, apple_due, reminder_list, ai_notes or "")
 
         db.mark_reminder_added(assignment_id)
-        
+
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -750,7 +687,7 @@ def remove_reminder_from_assignment():
     try:
         if not initialize_components():
             return jsonify({'error': 'Canvas API not configured'}), 500
-        
+
         data = request.json
         assignment_id = data.get('assignment_id')
         if not assignment_id:
@@ -759,15 +696,14 @@ def remove_reminder_from_assignment():
         assignment = db.get_assignment(assignment_id)
         if not assignment:
             return jsonify({'error': 'Assignment not found'}), 404
-        
+
         title = assignment[2]
         reminder_list = assignment[6]
 
         reminders_manager.remove_existing_reminder(title, reminder_list)
-        
-        # Mark reminder as not added in database
+
         db.update_assignment_fields(assignment_id, reminder_added=0)
-        
+
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -777,7 +713,7 @@ def generate_ai_summary_for_assignment():
     try:
         if not initialize_components():
             return jsonify({'error': 'AI not configured'}), 500
-        
+
         data = request.json
         assignment_id = data.get('assignment_id')
         if not assignment_id:
@@ -787,7 +723,6 @@ def generate_ai_summary_for_assignment():
         if not assignment:
             return jsonify({'error': 'Assignment not found'}), 404
 
-        
         existing_ai_notes = assignment[7] if len(assignment) > 7 else None
         if existing_ai_notes and existing_ai_notes.strip():
             return jsonify({'error': 'AI summary already exists for this assignment'}), 400
@@ -797,26 +732,19 @@ def generate_ai_summary_for_assignment():
         course_name = assignment[5] if len(assignment) > 5 else ''
         college_name = db.get_setting('college_name') or ''
 
-        # Initialize AI if needed
-        if not initialize_components():
-            return jsonify({'error': 'AI not configured'}), 500
-
         global ai_enhancer
         if not ai_enhancer or not ai_enhancer.model:
             return jsonify({'error': 'AI model not available'}), 500
 
-        
         ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
             title, description, course_name, college_name
         )
 
-        
         db.update_assignment_fields(
             assignment_id,
             ai_notes=ai_notes
         )
 
-        
         update_fields = {}
         if time_estimate is not None:
             update_fields['time_estimate'] = time_estimate
@@ -826,10 +754,10 @@ def generate_ai_summary_for_assignment():
             update_fields['ai_confidence'] = ai_confidence
         if ai_confidence_explanation is not None:
             update_fields['ai_confidence_explanation'] = ai_confidence_explanation
-        
+
         if update_fields:
             db.update_assignment_fields(assignment_id, **update_fields)
-        
+
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -843,16 +771,16 @@ def update_assignment():
             return jsonify({'error': 'Missing assignment_id'}), 400
 
         fields_to_update = {k: v for k, v in data.items() if k != 'assignment_id'}
-        
+
         if not fields_to_update:
             return jsonify({'error': 'No fields to update'}), 400
 
         allowed_fields = ['status', 'priority', 'user_notes', 'time_estimate', 'suggested_priority', 'ai_confidence', 'ai_confidence_explanation', 'reminder_added', 'ai_notes']
         fields_to_update = {k: v for k, v in fields_to_update.items() if k in allowed_fields}
-        
+
         if not fields_to_update:
             return jsonify({'error': 'Invalid fields'}), 400
-        
+
         db.update_assignment_fields(assignment_id, **fields_to_update)
         return jsonify({'success': True})
     except Exception as e:
@@ -864,22 +792,22 @@ def bulk_update_assignments():
         data = request.json
         assignment_ids = data.get('assignment_ids', [])
         fields_to_update = data.get('fields', {})
-        
+
         if not assignment_ids:
             return jsonify({'error': 'No assignment IDs provided'}), 400
-        
+
         if not fields_to_update:
             return jsonify({'error': 'No fields to update'}), 400
 
         allowed_fields = ['status', 'priority', 'reminder_added', 'reminder_list']
         fields_to_update = {k: v for k, v in fields_to_update.items() if k in allowed_fields}
-        
+
         if not fields_to_update:
             return jsonify({'error': 'Invalid fields'}), 400
 
         for assignment_id in assignment_ids:
             db.update_assignment_fields(assignment_id, **fields_to_update)
-        
+
         return jsonify({'success': True, 'updated': len(assignment_ids)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -894,7 +822,7 @@ def create_assignment():
         due_at = data.get('due_at')
         course_name = data.get('course_name')
         reminder_list = data.get('reminder_list')
-        
+
         if not all([assignment_id, title, due_at, course_name, reminder_list]):
             return jsonify({'error': 'Missing required fields'}), 400
 
@@ -907,22 +835,19 @@ def create_assignment():
         suggested_priority = None
         ai_confidence = None
         ai_confidence_explanation = None
-        
-        # Generate AI summary if explicitly requested (always call AI, even if description is blank)
+
         global ai_enhancer
         if use_ai:
             if not initialize_components():
                 ai_enhancer = None
-            
+
             if ai_enhancer and ai_enhancer.model:
                 ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
                     title, description or "", course_name, college_name
                 )
 
-        # Save assignment only after AI processing is complete
         db.save_assignment(assignment_id, title, description, due_at, course_name, reminder_list, ai_notes)
 
-        # Update AI-generated fields if they exist
         if time_estimate is not None or suggested_priority is not None or ai_confidence is not None or ai_confidence_explanation is not None:
             update_fields = {}
             if time_estimate is not None:
@@ -935,18 +860,16 @@ def create_assignment():
                 update_fields['ai_confidence_explanation'] = ai_confidence_explanation
             if update_fields:
                 db.update_assignment_fields(assignment_id, **update_fields)
-        
-        # Update user notes if provided
+
         if user_notes:
             db.update_assignment_fields(assignment_id, user_notes=user_notes)
-        
+
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ai-insights/check', methods=['GET'])
 def check_ai_insights():
-    """Check if AI insights exist in database"""
     try:
         cached = db.get_ai_insights()
         if cached:
@@ -957,11 +880,10 @@ def check_ai_insights():
 
 @app.route('/api/ai-insights', methods=['GET'])
 def get_ai_insights():
-    """Get AI insights with caching"""
     try:
         force_refresh = request.args.get('refresh', 'false').lower() == 'true'
         end_date = request.args.get('end_date')
-        
+
         if not end_date:
             return jsonify({'error': 'End date is required'}), 400
 
@@ -988,7 +910,7 @@ def get_ai_insights():
                             generated_at = generated_at.replace(tzinfo=EST)
                         except (ValueError, TypeError):
                             generated_at = datetime.now(EST)
-                    
+
                     current_time = datetime.now(EST)
 
                     age_hours = (current_time - generated_at).total_seconds() / 3600
@@ -1004,7 +926,7 @@ def get_ai_insights():
                             except (ValueError, TypeError):
                                 last_sync = datetime.strptime(last_sync_ts, "%Y-%m-%d %H:%M:%S")
                                 last_sync = last_sync.replace(tzinfo=EST)
-                            
+
                             if last_sync <= generated_at:
                                 return jsonify({
                                     'success': True,
@@ -1029,132 +951,61 @@ def get_ai_insights():
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
         except (ValueError, TypeError):
             return jsonify({'error': 'Invalid end date format'}), 400
-        
+
         active_assignments = []
         for assignment in assignments:
-            status = assignment[8] if len(assignment) > 8 else 'Not Started'
-            if status != 'Completed':
-                due_at = assignment[3]
-                try:
-                    due_date_obj = datetime.strptime(due_at, "%Y-%m-%dT%H:%M:%SZ")
-                    if due_date_obj.date() > end_date_obj.date():
-                        continue
-                except (ValueError, TypeError):
-                    pass
-                
-                time_estimate_raw = assignment[12] if len(assignment) > 12 else None
-                try:
-                    time_estimate = float(time_estimate_raw) if time_estimate_raw is not None else None
-                except (ValueError, TypeError):
-                    time_estimate = None
-                
-                active_assignments.append({
-                    'assignment_id': assignment[0],
-                    'title': assignment[1],
-                    'description': assignment[2] if len(assignment) > 2 else '',
-                    'due_at': assignment[3],
-                    'course_name': assignment[4],
-                    'reminder_list': assignment[5],
-                    'ai_notes': assignment[6] if len(assignment) > 6 else None,
-                    'reminder_added': assignment[7] if len(assignment) > 7 else 0,
-                    'status': status,
-                    'priority': assignment[9] if len(assignment) > 9 else 'Medium',
-                    'user_notes': assignment[10] if len(assignment) > 10 else '',
-                    'time_estimate': time_estimate,
-                    'suggested_priority': assignment[14] if len(assignment) > 14 else None,
-                    'ai_confidence': assignment[15] if len(assignment) > 15 else None
-                })
-        
+            due_at = assignment[3]
+            try:
+                due_date_obj = datetime.strptime(due_at, "%Y-%m-%dT%H:%M:%SZ")
+                if due_date_obj.date() > end_date_obj.date():
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+            time_estimate_raw = assignment[12] if len(assignment) > 12 else None
+            try:
+                time_estimate = float(time_estimate_raw) if time_estimate_raw is not None else None
+            except (ValueError, TypeError):
+                time_estimate = None
+
+            active_assignments.append({
+                'assignment_id': assignment[0],
+                'title': assignment[1],
+                'description': assignment[2] if len(assignment) > 2 else '',
+                'due_at': assignment[3],
+                'course_name': assignment[4],
+                'reminder_list': assignment[5],
+                'ai_notes': assignment[6] if len(assignment) > 6 else None,
+                'reminder_added': assignment[7] if len(assignment) > 7 else 0,
+                'status': assignment[8] if len(assignment) > 8 else 'Not Started',
+                'priority': assignment[9] if len(assignment) > 9 else 'Medium',
+                'user_notes': assignment[10] if len(assignment) > 10 else '',
+                'time_estimate': time_estimate,
+                'suggested_priority': assignment[13] if len(assignment) > 13 else None,
+                'ai_confidence': assignment[14] if len(assignment) > 14 else None
+            })
+
         if not active_assignments:
             return jsonify({'error': 'No active assignments to analyze within the selected date range'}), 400
 
         college_name = db.get_setting('college_name') or ''
 
         insights = ai_enhancer.generate_comprehensive_insights(active_assignments, college_name, end_date)
-        
+
         if not insights:
             return jsonify({'error': 'Failed to generate AI insights'}), 500
 
         last_sync_before = db.get_last_sync_timestamp() or datetime.now(EST).isoformat()
 
         db.save_ai_insights(json.dumps(insights), last_sync_before, end_date)
-        
+
         return jsonify({
             'success': True,
             'insights': insights,
             'cached': False,
             'generated_at': datetime.now(EST).isoformat()
         })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/assignments/study-plan', methods=['GET'])
-def generate_study_plan():
-    try:
-        assignments = db.get_all_assignments(include_deleted=False)
-
-        active_assignments = []
-        for assignment in assignments:
-            status = assignment[8] if len(assignment) > 8 else 'Not Started'
-            if status != 'Completed':
-                time_estimate_raw = assignment[12] if len(assignment) > 12 else None
-                try:
-                    time_estimate = float(time_estimate_raw) if time_estimate_raw is not None else None
-                except (ValueError, TypeError):
-                    time_estimate = None
-                
-                active_assignments.append({
-                    'assignment_id': assignment[0],
-                    'title': assignment[1],
-                    'due_at': assignment[3],
-                    'course_name': assignment[4],
-                    'priority': assignment[9] if len(assignment) > 9 else 'Medium',
-                    'time_estimate': time_estimate,
-                    'status': status
-                })
-
-        def sort_key(a):
-            due_date = datetime.strptime(a['due_at'], "%Y-%m-%dT%H:%M:%SZ")
-            priority_order = {'High': 0, 'Medium': 1, 'Low': 2}
-            return (due_date, priority_order.get(a['priority'], 1))
-        
-        active_assignments.sort(key=sort_key)
-
-        study_plan = []
-        current_date = datetime.now(EST)
-        
-        for assignment in active_assignments:
-            due_date = datetime.strptime(assignment['due_at'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=ZoneInfo("UTC")).astimezone(EST)
-            days_until_due = (due_date - current_date).days
-
-            time_estimate = assignment.get('time_estimate')
-            if time_estimate is None:
-                time_estimate = 2.0
-            else:
-                try:
-                    time_estimate = float(time_estimate)
-                except (ValueError, TypeError):
-                    time_estimate = 2.0
-
-            if time_estimate > 8:
-                suggested_start_days = max(1, int(time_estimate / 4))
-            else:
-                suggested_start_days = max(1, days_until_due - 1)
-            
-            study_plan.append({
-                'assignment_id': assignment['assignment_id'],
-                'title': assignment['title'],
-                'course_name': assignment['course_name'],
-                'due_date': assignment['due_at'],
-                'days_until_due': days_until_due,
-                'time_estimate': time_estimate,
-                'priority': assignment['priority'],
-                'suggested_start_days_before': suggested_start_days,
-                'status': assignment['status']
-            })
-        
-        return jsonify({'success': True, 'study_plan': study_plan})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

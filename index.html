@@ -1,3 +1,7 @@
+<!--
+    StudySync AI - Main HTML template.
+    Provides the user interface structure including sidebar navigation, modals, and assignment display areas.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,7 +55,7 @@
             </header>
 
             <div id="status" class="status"></div>
-            
+
             <div id="syncProgress" class="sync-progress" style="display: none;">
                 <div class="sync-progress-top">
                     <div id="syncProgressCount" class="sync-progress-count"></div>
@@ -66,12 +70,9 @@
                 </div>
             </div>
 
-
             <div id="assignmentsList" class="assignments-list"></div>
         </main>
     </div>
-
-    <!-- Floating Settings Button -->
 
     <div id="setupModal" class="modal">
         <div class="modal-content">
@@ -88,18 +89,18 @@
                 </ul>
                 <p class="info-text">You can change these settings later in the Settings page.</p>
             </div>
-            
+
             <div class="form-group">
                 <label for="setupCollegeName">College or University <span class="required">*</span></label>
                 <input id="setupCollegeName" class="form-input college-input" placeholder="Enter your college or university" autocomplete="off" spellcheck="false">
             </div>
-            
+
             <div class="form-group" id="setupReminderListsGroup">
                 <label>Courses <span class="required">*</span></label>
                 <p class="form-hint">For each course you want to use, set a reminder list name (required). You can disable courses you don't want to use. Disabled courses can be enabled later in Settings, but you'll need to set a reminder list name first.</p>
                 <div id="setupCoursesList" class="courses-list"></div>
             </div>
-            
+
             <div class="form-group checkbox-group">
                 <label class="checkbox-label">
                     <input type="checkbox" id="setupAutoSyncReminders">
@@ -107,7 +108,7 @@
                 </label>
                 <p class="form-hint form-hint-indented">If enabled, assignments will be automatically added to Apple Reminders when synced. If disabled, you can manually add them using the "Add to Reminders" button on each assignment.</p>
             </div>
-            
+
             <div class="form-group checkbox-group">
                 <label class="checkbox-label">
                     <input type="checkbox" id="setupAiSummaryEnabled">
@@ -115,7 +116,7 @@
                 </label>
                 <p class="form-hint form-hint-indented">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insights will still work regardless of this setting.</p>
             </div>
-            
+
             <div class="settings-actions">
                 <button id="saveAndSync" class="btn btn-primary">Save & Sync</button>
                 <button id="cancelSetup" class="btn btn-secondary">Cancel</button>
@@ -128,14 +129,14 @@
             <span class="close" onclick="closeModal()">&times;</span>
             <h2>Settings</h2>
             <div id="settingsWarningMessage" style="display: none;"></div>
-            
+
             <div class="settings-section">
                 <h3>Basic Information</h3>
                 <div class="form-group">
                     <label for="collegeName">College or University: <span class="required">*</span></label>
                     <input id="collegeName" class="form-input college-input" placeholder="Enter your college or university" autocomplete="off" spellcheck="false">
                 </div>
-                
+
                 <div class="form-group section-spacing">
                     <label class="checkbox-label">
                         <input type="checkbox" id="settingsAutoSyncReminders">
@@ -143,7 +144,7 @@
                     </label>
                     <p class="form-hint">If enabled, assignments will be automatically added to Apple Reminders when synced. If disabled, you can manually add them using the "Add to Reminders" button on each assignment.</p>
                 </div>
-                
+
                 <div class="form-group section-spacing">
                     <label class="checkbox-label">
                         <input type="checkbox" id="settingsAiSummaryEnabled" checked>
@@ -152,7 +153,7 @@
                     <p class="form-hint">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insights will still work regardless of this setting.</p>
                 </div>
             </div>
-            
+
             <div class="settings-section">
                 <h3>Course Management</h3>
                 <div class="info-box">
@@ -171,7 +172,7 @@
                 </div>
                 <div id="coursesList" class="courses-list"></div>
             </div>
-            
+
             <div class="settings-actions">
                 <button onclick="closeModal()" class="btn btn-secondary">Close</button>
             </div>
@@ -225,7 +226,6 @@
             <div id="deletedAssignmentsList" class="deleted-assignments-list"></div>
         </div>
     </div>
-
 
     <script src="/app.js?v=4"></script>
 </body>

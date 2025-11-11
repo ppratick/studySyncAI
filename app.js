@@ -1,3 +1,8 @@
+/**
+ * Frontend JavaScript for StudySync AI.
+ * Handles UI interactions, assignment display, syncing, and user interface management.
+ */
+
 let assignments = [];
 let courses = [];
 let collegeName = null;
@@ -12,9 +17,9 @@ let isSyncInProgress = false;
 let isInsightsModalLoading = false;
 let isAddAssignmentWorkflow = false;
 let aiSummaryEnabled = true;
-let currentFilter = 'all'; // 'all', 'completed', 'deleted', or course name
+let currentFilter = 'all';
 let currentFilterCourse = null;
-let focusedAssignmentId = null; // Track which assignment is focused for keyboard shortcuts
+let focusedAssignmentId = null;
 
 function setButtonVisualState(button, disabled, disabledTitle) {
     if (!button) return;
@@ -67,7 +72,6 @@ function updateSyncButtonState() {
 function refreshPrimaryButtonsState() {
     updateSyncButtonState();
     updateAIInsightsButtonState();
-    updateAddAssignmentButtonState();
     updateSettingsButtonState();
     updateAssignmentActionButtonsState();
 }
@@ -86,8 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('addClassBtn').addEventListener('click', openAddClassModal);
     document.getElementById('syncBtn').addEventListener('click', syncAssignments);
-    // Settings button is now in sidebar, handled via onclick in HTML
-    // Settings auto-save on change - no save button needed
+
     document.getElementById('aiInsightsBtn').addEventListener('click', () => {
         const btn = document.getElementById('aiInsightsBtn');
         if (
@@ -107,23 +110,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     document.getElementById('refreshInsightsBtn').addEventListener('click', () => {
-        if (isInsightsModalLoading) return;
+        const refreshBtn = document.getElementById('refreshInsightsBtn');
+        if (isInsightsModalLoading || refreshBtn.disabled) return;
         closeAIInsightsModal();
         openAIInsightsDateModal(true);
     });
     document.getElementById('generateInsightsBtn').addEventListener('click', generateAIInsights);
-    
-    // Sidebar navigation
+
     document.getElementById('sidebarAll').addEventListener('click', () => setFilter('all'));
     document.getElementById('sidebarDeleted').addEventListener('click', () => setFilter('deleted'));
-    
-    // Keyboard shortcuts for delete
+
     document.addEventListener('keydown', handleKeyboardShortcuts);
-    
-    // Right-click context menu
+
     document.addEventListener('contextmenu', handleRightClick);
     document.addEventListener('click', () => {
-        // Close context menu on click
         const contextMenu = document.getElementById('contextMenu');
         if (contextMenu) {
             contextMenu.remove();
@@ -136,8 +136,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         closeSetupModal();
     });
-
-
 
     const setupAutoSyncCheckbox = document.getElementById('setupAutoSyncReminders');
     if (setupAutoSyncCheckbox) {
@@ -186,9 +184,8 @@ async function loadAssignments() {
             assignments = [];
         } else {
             assignments = data;
-            populateSidebarCourses();
-            filterAssignments();
-            updateStats();
+            await populateSidebarCourses();
+            await filterAssignments();
             attachReminderListeners();
             attachAISummaryListeners();
         }
@@ -196,7 +193,7 @@ async function loadAssignments() {
     } catch (error) {
         console.error('Error loading assignments:', error);
         assignments = [];
-        populateSidebarCourses();
+        await populateSidebarCourses();
         displayAssignments([]);
         refreshPrimaryButtonsState();
     }
@@ -227,11 +224,6 @@ function updateAIInsightsButtonState() {
     if (!disabledReason) {
         btn.title = '';
     }
-}
-
-function updateAddAssignmentButtonState() {
-    // This function is kept for compatibility but no longer needed since addAssignmentBtn was removed
-    return;
 }
 
 function updateSettingsButtonState() {
@@ -290,52 +282,49 @@ async function loadCourses() {
         if (data.error) {
             console.error('Error loading courses:', data.error);
             courses = [];
-            populateSidebarCourses();
+            await populateSidebarCourses();
             return;
         }
 
         if (!Array.isArray(data)) {
             console.error('Invalid courses data format:', data);
             courses = [];
-            populateSidebarCourses();
+            await populateSidebarCourses();
             return;
         }
 
         courses = data;
-        populateSidebarCourses();
+        await populateSidebarCourses();
     } catch (error) {
         console.error('Error loading courses:', error);
         courses = [];
-        populateSidebarCourses();
+        await populateSidebarCourses();
     }
 }
 
-function populateSidebarCourses() {
+async function populateSidebarCourses() {
     const sidebarCourses = document.getElementById('sidebarCourses');
     if (!sidebarCourses) return;
 
     sidebarCourses.innerHTML = '';
 
-    // Get unique reminder list names from assignments (for display)
-    // But track the official course_name for filtering
     const reminderListToCourseName = new Map();
     assignments.forEach(a => {
         if (a && a.course_name && !a.deleted) {
-            const displayName = (a.reminder_list && a.reminder_list.trim()) 
-                ? a.reminder_list.trim() 
+            const displayName = (a.reminder_list && a.reminder_list.trim())
+                ? a.reminder_list.trim()
                 : a.course_name;
-            // Map display name to official course name for filtering
+
             if (!reminderListToCourseName.has(displayName)) {
                 reminderListToCourseName.set(displayName, a.course_name);
             }
         }
     });
 
-    // Also add courses from the courses list
     courses.forEach(c => {
         if (c && c.name && (c.enabled === true || c.enabled === 1 || c.enabled === '1')) {
-            const displayName = (c.reminder_list && c.reminder_list.trim()) 
-                ? c.reminder_list.trim() 
+            const displayName = (c.reminder_list && c.reminder_list.trim())
+                ? c.reminder_list.trim()
                 : c.name;
             if (!reminderListToCourseName.has(displayName)) {
                 reminderListToCourseName.set(displayName, c.name);
@@ -349,7 +338,7 @@ function populateSidebarCourses() {
         const courseItem = document.createElement('button');
         courseItem.className = 'sidebar-course-item';
         const officialCourseName = reminderListToCourseName.get(displayName);
-        courseItem.dataset.course = officialCourseName; // Store official name for filtering
+        courseItem.dataset.course = officialCourseName;
         courseItem.innerHTML = `
             <span class="sidebar-label">${escapeHtml(displayName)}</span>
         `;
@@ -358,29 +347,25 @@ function populateSidebarCourses() {
     });
 
     updateSidebarActiveState();
-    updateSidebarCounts();
+    await updateSidebarCounts();
 }
 
-function setFilter(filterType, courseName = null) {
+async function setFilter(filterType, courseName = null) {
     currentFilter = filterType;
     currentFilterCourse = courseName;
-    
+
     updateSidebarActiveState();
-    
-    // Handle deleted filter separately - load from deleted_assignments table
+
     if (filterType === 'deleted') {
         displayDeletedAssignmentsInMainView();
     } else {
-        filterAssignments();
+        await filterAssignments();
     }
-    
-    // Update header title
+
     const titleEl = document.getElementById('currentViewTitle');
     if (titleEl) {
         if (filterType === 'all') {
             titleEl.textContent = 'All Classes';
-        } else if (filterType === 'completed') {
-            titleEl.textContent = 'Completed';
         } else if (filterType === 'deleted') {
             titleEl.textContent = 'Recently Deleted';
         } else if (filterType === 'course' && courseName) {
@@ -390,12 +375,11 @@ function setFilter(filterType, courseName = null) {
 }
 
 function updateSidebarActiveState() {
-    // Remove active from all items
+
     document.querySelectorAll('.sidebar-item, .sidebar-course-item').forEach(item => {
         item.classList.remove('active');
     });
 
-    // Add active to current filter
     if (currentFilter === 'all') {
         document.getElementById('sidebarAll')?.classList.add('active');
     } else if (currentFilter === 'deleted') {
@@ -408,17 +392,25 @@ function updateSidebarActiveState() {
     }
 }
 
-function updateSidebarCounts() {
-    // Update deleted count
-    const deletedCount = assignments.filter(a => a && a.deleted).length;
-    const deletedBadge = document.getElementById('deletedCount');
-    if (deletedBadge) {
-        deletedBadge.textContent = deletedCount;
-        deletedBadge.style.display = deletedCount > 0 ? 'inline-block' : 'none';
+async function updateSidebarCounts() {
+    try {
+        const response = await fetch('/api/assignments/deleted');
+        const deleted = await response.json();
+        const deletedCount = deleted && !deleted.error ? deleted.length : 0;
+        const deletedBadge = document.getElementById('deletedCount');
+        if (deletedBadge) {
+            deletedBadge.textContent = deletedCount;
+            deletedBadge.style.display = deletedCount > 0 ? 'inline-block' : 'none';
+        }
+    } catch (error) {
+        console.error('Error loading deleted count:', error);
+        const deletedBadge = document.getElementById('deletedCount');
+        if (deletedBadge) {
+            deletedBadge.textContent = '0';
+            deletedBadge.style.display = 'none';
+        }
     }
 }
-
-
 
 async function loadSettings({ suppressSetupCheck = false } = {}) {
     try {
@@ -437,13 +429,13 @@ async function loadSettings({ suppressSetupCheck = false } = {}) {
         if (autoSyncCheckbox) {
             autoSyncCheckbox.checked = data.auto_sync_reminders === '1' || data.auto_sync_reminders === true;
         }
-        
+
         const aiSummaryCheckbox = document.getElementById('settingsAiSummaryEnabled');
         if (aiSummaryCheckbox) {
             aiSummaryCheckbox.checked = data.ai_summary_enabled !== '0';
         }
         aiSummaryEnabled = data.ai_summary_enabled !== '0';
-        
+
         await loadCoursesInSettings();
         await checkInsightsExist();
 
@@ -478,22 +470,19 @@ async function loadCoursesInSettings() {
         coursesList.innerHTML = '';
         const canvasCourses = [];
         const manualCourses = [];
-        
-        // Separate Canvas courses from manually added courses
+
         data.forEach(course => {
             if (!course || !course.name) {
                 return;
             }
-            
-            // Manually added courses don't have a Canvas ID
+
             if (course.id === null || course.id === undefined) {
                 manualCourses.push(course);
             } else {
                 canvasCourses.push(course);
             }
         });
-        
-        // Display Canvas courses first
+
         const canvasCourseNames = new Set();
         canvasCourses.forEach(course => {
             const courseItem = document.createElement('div');
@@ -510,17 +499,16 @@ async function loadCoursesInSettings() {
             courseItem.className = `course-item ${!currentState ? 'course-disabled' : ''}`;
 
             const reminderList = course.reminder_list ? String(course.reminder_list).trim() : '';
-            // Use pending change if exists, otherwise use saved value
-            // For disabled courses, don't show reminder list value
+
             let displayReminderList = '';
             if (currentState) {
-                displayReminderList = reminderListChanges[courseName] !== undefined 
-                    ? reminderListChanges[courseName] 
+                displayReminderList = reminderListChanges[courseName] !== undefined
+                    ? reminderListChanges[courseName]
                     : (reminderList || courseName);
             } else {
-                // Disabled courses: only show if there's a pending change, otherwise empty
-                displayReminderList = reminderListChanges[courseName] !== undefined 
-                    ? reminderListChanges[courseName] 
+
+                displayReminderList = reminderListChanges[courseName] !== undefined
+                    ? reminderListChanges[courseName]
                     : '';
             }
 
@@ -528,8 +516,7 @@ async function loadCoursesInSettings() {
             actionButton.className = currentState ? 'btn-delete' : 'btn-enable';
             actionButton.textContent = currentState ? 'Disable' : 'Enable';
             actionButton.dataset.courseName = courseName;
-            
-            // Disable the Enable button if there's no reminder list name
+
             if (!currentState) {
                 const hasReminderList = displayReminderList && displayReminderList.trim() !== '' && displayReminderList !== 'Enter reminder list name to enable';
                 actionButton.disabled = !hasReminderList;
@@ -543,7 +530,7 @@ async function loadCoursesInSettings() {
             } else {
                 actionButton.title = 'Disable course';
             }
-            
+
             actionButton.addEventListener('click', () => {
                 if (!actionButton.disabled) {
                     toggleCourseEnabled(courseName, courseItem, actionButton);
@@ -557,7 +544,7 @@ async function loadCoursesInSettings() {
             reminderListSpan.className = 'reminder-list-editable';
 
             const hasValidReminderList = displayReminderList && displayReminderList.trim() !== '';
-            // For disabled courses, show placeholder text instead of value
+
             if (!currentState && !hasValidReminderList) {
                 reminderListSpan.textContent = 'Enter reminder list name to enable';
                 reminderListSpan.style.color = '#86868b';
@@ -576,7 +563,7 @@ async function loadCoursesInSettings() {
             reminderListSpan.style.fontWeight = 'normal';
 
             reminderListSpan.addEventListener('click', () => {
-                // For disabled courses, pass empty string instead of course name
+
                 const defaultValue = currentState ? (reminderList || courseName) : '';
                 editReminderList(courseName, defaultValue);
             });
@@ -602,8 +589,7 @@ async function loadCoursesInSettings() {
             courseItem.appendChild(actionButton);
             coursesList.appendChild(courseItem);
         });
-        
-        // Display manually added courses separately
+
         if (manualCourses.length > 0) {
             const separator = document.createElement('div');
             separator.style.width = '100%';
@@ -616,10 +602,9 @@ async function loadCoursesInSettings() {
             manualCourses.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(course => {
                 const courseName = String(course.name || '');
                 const reminderList = course.reminder_list ? String(course.reminder_list).trim() : courseName;
-                
-                // Use pending change if exists, otherwise use saved value
-                const currentName = reminderListChanges[courseName] !== undefined 
-                    ? reminderListChanges[courseName] 
+
+                const currentName = reminderListChanges[courseName] !== undefined
+                    ? reminderListChanges[courseName]
                     : reminderList;
 
                 const item = document.createElement('div');
@@ -629,7 +614,6 @@ async function loadCoursesInSettings() {
                 courseInfo.className = 'course-info';
                 courseInfo.style.flex = '1';
 
-                // Single editable name field (name = reminder list for manual courses)
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'reminder-list-editable';
                 nameSpan.textContent = currentName;
@@ -648,7 +632,6 @@ async function loadCoursesInSettings() {
 
                 courseInfo.appendChild(nameSpan);
 
-                // Delete button
                 const deleteButton = document.createElement('button');
                 deleteButton.className = 'btn-delete';
                 deleteButton.textContent = 'Delete';
@@ -675,28 +658,24 @@ async function toggleCourseEnabled(courseName, courseItem, actionButton) {
         : (originalCourseStates[courseName] !== undefined ? originalCourseStates[courseName] : true);
 
     const newState = !currentState;
-    
-    // If enabling, check if reminder list is set
+
     if (newState) {
-        // Get current reminder list from the course info
+
         const reminderListSpan = courseItem.querySelector('.reminder-list-editable');
         const currentReminderList = reminderListSpan ? reminderListSpan.textContent.trim() : '';
-        
-        // Also check if there's a pending change
+
         const pendingReminderList = reminderListChanges[courseName];
         const reminderList = pendingReminderList !== undefined ? pendingReminderList : currentReminderList;
-        
-        // Check if reminder list is valid (not empty, not course name, not placeholder)
+
         if (!reminderList || reminderList === courseName || reminderList === 'Enter reminder list name to enable') {
-            // No reminder list set, prompt user to set it
+
             showSettingsWarning('Please set a reminder list name before enabling this course. Click on the reminder list name to edit it.');
             return;
         }
     }
-    
+
     courseEnableDisableChanges[courseName] = newState;
-    
-    // Save immediately
+
     try {
         const endpoint = newState ? '/api/course-mapping/enable' : '/api/course-mapping/disable';
         const response = await fetch(endpoint, {
@@ -706,18 +685,18 @@ async function toggleCourseEnabled(courseName, courseItem, actionButton) {
             },
             body: JSON.stringify({ course_name: courseName })
         });
-        
+
         const data = await response.json();
         if (data.success) {
             originalCourseStates[courseName] = newState;
         } else {
-            // Revert on error
+
             courseEnableDisableChanges[courseName] = currentState;
             showSettingsWarning('Error updating course: ' + (data.error || 'Unknown error'), 'error');
             return;
         }
     } catch (error) {
-        // Revert on error
+
         courseEnableDisableChanges[courseName] = currentState;
         showSettingsWarning('Error updating course: ' + error.message, 'error');
         return;
@@ -865,7 +844,6 @@ function showSetupModal(showReminderListsMessage = false, assignmentIdForReminde
             loadSetupCourses();
         });
 
-
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden';
 }
@@ -881,26 +859,23 @@ async function loadSetupCourses() {
             return;
         }
 
-        // Show all courses, not just those needing setup
         coursesList.innerHTML = '';
         data.forEach(course => {
             if (!course || !course.name) return;
-            
+
             const isEnabled = course.enabled === true || course.enabled === 1 || course.enabled === '1';
             const defaultName = course.name ? course.name.trim() : '';
             let currentReminderList = '';
-            
-            // Only set reminder list if course is enabled
+
             if (isEnabled) {
                 if (course.reminder_list && course.reminder_list.trim()) {
                     currentReminderList = course.reminder_list.trim();
                 } else {
-                    // For enabled courses without a reminder list, use course name as default
+
                     currentReminderList = defaultName;
                 }
             }
-            // For disabled courses, always leave empty (no value, no placeholder)
-            
+
             const courseItem = document.createElement('div');
             courseItem.className = `course-item ${!isEnabled ? 'course-disabled' : ''}`;
             courseItem.style.marginBottom = '10px';
@@ -915,18 +890,18 @@ async function loadSetupCourses() {
             titleDiv.style.alignItems = 'center';
             titleDiv.style.gap = '8px';
             titleDiv.style.marginBottom = '8px';
-            
+
             const title = document.createElement('strong');
             title.textContent = course.name;
             titleDiv.appendChild(title);
-            
+
             if (!isEnabled) {
                 const disabledLabel = document.createElement('span');
                 disabledLabel.className = 'disabled-label';
                 disabledLabel.textContent = '(Disabled)';
                 titleDiv.appendChild(disabledLabel);
             }
-            
+
             courseInfo.appendChild(titleDiv);
 
             const inputDiv = document.createElement('div');
@@ -935,7 +910,7 @@ async function loadSetupCourses() {
             input.className = 'form-input reminder-list-input';
             input.dataset.courseName = course.name;
             input.placeholder = isEnabled ? 'Enter reminder list name (required)' : 'Enter reminder list name to enable';
-            // For disabled courses, always set value to empty string (no placeholder value)
+
             input.value = isEnabled ? currentReminderList : '';
             input.autocomplete = 'off';
             input.spellcheck = 'false';
@@ -943,9 +918,9 @@ async function loadSetupCourses() {
             input.style.padding = '8px';
             input.style.border = '2px solid #e0e0e0';
             input.style.borderRadius = '6px';
-            // Allow typing even when disabled so users can enter reminder list name
+
             input.disabled = false;
-            
+
             if (!isEnabled) {
                 input.style.opacity = '0.8';
                 input.style.backgroundColor = '#fafafa';
@@ -953,8 +928,7 @@ async function loadSetupCourses() {
                 input.style.opacity = '1';
                 input.style.backgroundColor = '#ffffff';
             }
-            
-            // Input event listener is now added after actionButton creation
+
             inputDiv.appendChild(input);
             courseInfo.appendChild(inputDiv);
 
@@ -964,8 +938,7 @@ async function loadSetupCourses() {
             actionButton.title = isEnabled ? 'Disable course' : 'Enable course';
             actionButton.dataset.courseName = course.name;
             actionButton.style.marginLeft = '12px';
-            
-            // Disable the Enable button if there's no reminder list name
+
             if (!isEnabled) {
                 actionButton.disabled = !currentReminderList || currentReminderList.trim() === '';
                 if (actionButton.disabled) {
@@ -974,19 +947,18 @@ async function loadSetupCourses() {
                     actionButton.title = 'Enter a reminder list name to enable';
                 }
             }
-            
+
             actionButton.addEventListener('click', () => {
                 toggleSetupCourseEnabled(course.name, courseItem, actionButton, input);
             });
-            
-            // Update button state when input changes
+
             input.addEventListener('input', function() {
-                // Check current disabled state dynamically
+
                 const currentlyDisabled = courseItem.classList.contains('course-disabled');
-                
+
                 if (this.value.trim()) {
                     this.style.borderColor = '#4caf50';
-                    // Enable the button if course is disabled
+
                     if (currentlyDisabled && actionButton.disabled) {
                         actionButton.disabled = false;
                         actionButton.style.opacity = '1';
@@ -995,7 +967,7 @@ async function loadSetupCourses() {
                     }
                 } else {
                     this.style.borderColor = '#e0e0e0';
-                    // Disable the button if course is disabled and no reminder list
+
                     if (currentlyDisabled) {
                         actionButton.disabled = true;
                         actionButton.style.opacity = '0.5';
@@ -1017,9 +989,9 @@ async function loadSetupCourses() {
 function toggleSetupCourseEnabled(courseName, courseItem, actionButton, input) {
     const currentState = courseItem.classList.contains('course-disabled') ? false : true;
     const newState = !currentState;
-    
+
     if (newState) {
-        // Enabling - check if reminder list name is set
+
         const reminderList = input.value.trim();
         if (!reminderList) {
             showSetupWarning('Please enter a reminder list name before enabling this course.');
@@ -1028,8 +1000,7 @@ function toggleSetupCourseEnabled(courseName, courseItem, actionButton, input) {
             return;
         }
     }
-    
-    // Update UI
+
     if (newState) {
         courseItem.classList.remove('course-disabled');
         actionButton.className = 'btn-delete';
@@ -1041,8 +1012,7 @@ function toggleSetupCourseEnabled(courseName, courseItem, actionButton, input) {
         input.style.opacity = '1';
         input.style.backgroundColor = '#ffffff';
         input.placeholder = 'Enter reminder list name (required)';
-        
-        // Remove disabled label if exists
+
         const disabledLabel = courseItem.querySelector('.disabled-label');
         if (disabledLabel) {
             disabledLabel.remove();
@@ -1051,28 +1021,18 @@ function toggleSetupCourseEnabled(courseName, courseItem, actionButton, input) {
         courseItem.classList.add('course-disabled');
         actionButton.className = 'btn-enable';
         actionButton.textContent = 'Enable';
-        // Keep input enabled so user can type reminder list name
+
         input.style.opacity = '0.8';
         input.style.backgroundColor = '#fafafa';
         input.placeholder = 'Enter reminder list name to enable';
         input.style.borderColor = '#e0e0e0';
-        // Clear the value when disabling
+
         input.value = '';
-        
-        // Disable the Enable button if there's no reminder list name
-        const reminderList = input.value.trim();
-        actionButton.disabled = !reminderList || reminderList === '';
-        if (actionButton.disabled) {
-            actionButton.style.opacity = '0.5';
-            actionButton.style.cursor = 'not-allowed';
-            actionButton.title = 'Enter a reminder list name to enable';
-        } else {
-            actionButton.style.opacity = '1';
-            actionButton.style.cursor = 'pointer';
-            actionButton.title = 'Enable course';
-        }
-        
-        // Add disabled label
+        actionButton.disabled = true;
+        actionButton.style.opacity = '0.5';
+        actionButton.style.cursor = 'not-allowed';
+        actionButton.title = 'Enter a reminder list name to enable';
+
         const titleDiv = courseItem.querySelector('.course-info > div');
         if (titleDiv && !titleDiv.querySelector('.disabled-label')) {
             const disabledLabel = document.createElement('span');
@@ -1109,14 +1069,13 @@ async function performSync() {
     btn.textContent = 'Syncing...';
     refreshPrimaryButtonsState();
     updateAddAssignmentButtonsState();
-    // Settings button is now in sidebar, no need to disable it during sync
 
     const restoreAfterSync = () => {
         isSyncInProgress = false;
         btn.textContent = 'Sync Assignments';
         refreshPrimaryButtonsState();
         updateAddAssignmentButtonsState();
-        // Settings button is now in sidebar, no need to re-enable it
+
     };
 
     progressContainer.style.display = 'block';
@@ -1155,8 +1114,8 @@ async function performSync() {
                                 return new Date(a.due_at) - new Date(b.due_at);
                             });
 
-                            filterAssignments();
-                            updateStats();
+                            await filterAssignments();
+                            await updateStats();
                         }
                     }
                 } else if (data.type === 'complete') {
@@ -1262,7 +1221,7 @@ async function saveAndSync() {
         const isEnabled = !courseItem.classList.contains('course-disabled');
 
         if (isEnabled) {
-            // For enabled courses, reminder list is required
+
             if (!reminderList) {
                 missingCourses.push(courseName);
                 input.style.borderColor = '#d32f2f';
@@ -1276,10 +1235,10 @@ async function saveAndSync() {
                 coursesToUpdate.push({ course_name: courseName, reminder_list: reminderList, enabled: true });
             }
         } else {
-            // For disabled courses, save as disabled (reminder list optional)
+
             coursesToDisable.push(courseName);
             if (reminderList) {
-                // Save reminder list even if disabled (for future enable)
+
                 coursesToUpdate.push({ course_name: courseName, reminder_list: reminderList, enabled: false });
             }
         }
@@ -1321,7 +1280,6 @@ async function saveAndSync() {
 
         collegeName = newCollegeName;
 
-        // Save enabled courses with reminder lists
         for (const course of coursesToUpdate) {
             await fetch('/api/course-mapping', {
                 method: 'POST',
@@ -1333,8 +1291,7 @@ async function saveAndSync() {
                     reminder_list: course.reminder_list
                 })
             });
-            
-            // Set enabled state
+
             if (course.enabled) {
                 await fetch('/api/course-mapping/enable', {
                     method: 'POST',
@@ -1349,10 +1306,9 @@ async function saveAndSync() {
                 });
             }
         }
-        
-        // Disable courses that were marked as disabled
+
         for (const courseName of coursesToDisable) {
-            // Only disable if not already in coursesToUpdate
+
             const alreadyHandled = coursesToUpdate.some(c => c.course_name === courseName);
             if (!alreadyHandled) {
                 await fetch('/api/course-mapping/disable', {
@@ -1365,7 +1321,7 @@ async function saveAndSync() {
 
         await loadAssignments();
         await loadCourses();
-        populateSidebarCourses();
+        await populateSidebarCourses();
 
         closeSetupModal();
 
@@ -1380,8 +1336,7 @@ async function saveAndSync() {
                 showStatus('Please click "Add to Reminders" again now that reminder lists are set.', 'info');
             }
         }
-        
-        // Always trigger sync after saving settings
+
         await performSync();
 
     } catch (error) {
@@ -1448,7 +1403,6 @@ async function saveSettings() {
 
             courseEnableDisableChanges = {};
 
-            // Save reminder list changes
             for (const [courseName, reminderList] of Object.entries(reminderListChanges)) {
                 try {
                     await fetch('/api/course-mapping', {
@@ -1461,7 +1415,7 @@ async function saveSettings() {
                             reminder_list: reminderList
                         })
                     });
-                    // Update existing assignments for this course
+
                     try {
                         await bulkUpdateReminderListForCourse(courseName, reminderList);
                     } catch (_) {}
@@ -1476,8 +1430,7 @@ async function saveSettings() {
             await loadAssignments();
             await loadCoursesInSettings();
             await loadCourses();
-            
-            // Close modal after a brief delay to show success message
+
             setTimeout(() => {
                 closeModal();
             }, 1000);
@@ -1494,15 +1447,15 @@ async function saveSettings() {
 function showSettingsWarning(message, type = 'info') {
     const warningDiv = document.getElementById('settingsWarningMessage');
     if (!warningDiv) return;
-    
+
     warningDiv.textContent = message;
     warningDiv.style.display = 'block';
-    
+
     if (type === 'error') {
         warningDiv.style.background = '#f8d7da';
         warningDiv.style.borderColor = '#d32f2f';
         warningDiv.style.color = '#721c24';
-        // Auto-dismiss error messages after 5 seconds
+
         setTimeout(() => {
             if (warningDiv.textContent === message) {
                 warningDiv.style.display = 'none';
@@ -1516,19 +1469,19 @@ function showSettingsWarning(message, type = 'info') {
         warningDiv.style.background = '#d4edda';
         warningDiv.style.borderColor = '#28a745';
         warningDiv.style.color = '#155724';
-        // Auto-dismiss success messages after 3 seconds
+
         setTimeout(() => {
             if (warningDiv.textContent === message) {
                 warningDiv.style.display = 'none';
             }
         }, 3000);
     }
-    
+
     warningDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function editManualCourseName(courseName, currentName) {
-    // For manually added courses, name and reminder list are the same
+
     const newName = prompt(`Rename course:`, currentName);
     if (newName === null) return;
 
@@ -1537,16 +1490,15 @@ async function editManualCourseName(courseName, currentName) {
         showSettingsWarning('Course name cannot be empty.', 'error');
         return;
     }
-    
+
     if (trimmed === currentName) {
-        // No change
+
         return;
     }
 
-    // Save immediately - update both course name and reminder list
     try {
         if (trimmed === courseName) {
-            // Only updating reminder list, not renaming course
+
             const response = await fetch('/api/course-mapping', {
                 method: 'POST',
                 headers: {
@@ -1560,23 +1512,21 @@ async function editManualCourseName(courseName, currentName) {
 
             const data = await response.json();
             if (data.success) {
-                // Update all assignments with the new reminder list
+
                 try {
                     await bulkUpdateReminderListForCourse(courseName, trimmed);
                 } catch (_) {}
-                
-                // Reload courses and assignments
+
                 await loadCourses();
                 await loadAssignments();
                 await loadCoursesInSettings();
-                populateSidebarCourses();
+                await populateSidebarCourses();
                 showSettingsWarning('Course updated successfully', 'success');
             } else {
                 showSettingsWarning('Error updating course: ' + (data.error || 'Unknown error'), 'error');
             }
         } else {
-            // Renaming course - need to update course name and all assignments
-            // First, create new course mapping with new name
+
             const response = await fetch('/api/course-mapping', {
                 method: 'POST',
                 headers: {
@@ -1590,7 +1540,7 @@ async function editManualCourseName(courseName, currentName) {
 
             const data = await response.json();
             if (data.success) {
-                // Update all assignments with the new course name
+
                 try {
                     const assignmentsResp = await fetch('/api/assignments');
                     const assignmentsData = await assignmentsResp.json();
@@ -1612,8 +1562,7 @@ async function editManualCourseName(courseName, currentName) {
                         }
                     }
                 } catch (_) {}
-                
-                // Delete old course mapping
+
                 try {
                     await fetch('/api/course-mapping/delete', {
                         method: 'POST',
@@ -1621,12 +1570,11 @@ async function editManualCourseName(courseName, currentName) {
                         body: JSON.stringify({ course_name: courseName })
                     });
                 } catch (_) {}
-                
-                // Reload courses and assignments
+
                 await loadCourses();
                 await loadAssignments();
                 await loadCoursesInSettings();
-                populateSidebarCourses();
+                await populateSidebarCourses();
                 showSettingsWarning('Course renamed successfully', 'success');
             } else {
                 showSettingsWarning('Error renaming course: ' + (data.error || 'Unknown error'), 'error');
@@ -1653,7 +1601,7 @@ async function deleteManualCourse(courseName) {
 
         const data = await response.json();
         if (data.success) {
-            // Delete all assignments for this course
+
             try {
                 const assignmentsResp = await fetch('/api/assignments');
                 const assignmentsData = await assignmentsResp.json();
@@ -1668,12 +1616,11 @@ async function deleteManualCourse(courseName) {
                     }
                 }
             } catch (_) {}
-            
-            // Reload courses and assignments
+
             await loadCourses();
             await loadAssignments();
             await loadCoursesInSettings();
-            populateSidebarCourses();
+            await populateSidebarCourses();
         } else {
             showSettingsWarning('Error deleting course: ' + (data.error || 'Unknown error'), 'error');
         }
@@ -1683,18 +1630,18 @@ async function deleteManualCourse(courseName) {
 }
 
 async function editReminderList(courseName, currentReminderList) {
-    // Get the current value (either pending change or original)
-    const displayValue = reminderListChanges[courseName] !== undefined 
-        ? reminderListChanges[courseName] 
+
+    const displayValue = reminderListChanges[courseName] !== undefined
+        ? reminderListChanges[courseName]
         : (currentReminderList || '');
-    
+
     const newReminderList = prompt(`Enter reminder list name for "${courseName}":`, displayValue);
     if (newReminderList === null) return;
 
     const trimmed = newReminderList.trim();
     if (!trimmed) {
         showSettingsWarning('Reminder list name cannot be empty.', 'error');
-        // Auto-dismiss after 3 seconds
+
         setTimeout(() => {
             const warningDiv = document.getElementById('settingsWarningMessage');
             if (warningDiv) {
@@ -1704,7 +1651,6 @@ async function editReminderList(courseName, currentReminderList) {
         return;
     }
 
-    // Save immediately
     try {
         const response = await fetch('/api/course-mapping', {
             method: 'POST',
@@ -1719,20 +1665,18 @@ async function editReminderList(courseName, currentReminderList) {
 
         const data = await response.json();
         if (data.success) {
-            // Update existing assignments for this course
+
             try {
                 await bulkUpdateReminderListForCourse(courseName, trimmed);
             } catch (_) {}
-            
-            // Update the display immediately
+
             const reminderSpan = document.querySelector(`.reminder-list-editable[data-course-name="${escapeHtml(courseName)}"]`);
             if (reminderSpan) {
                 reminderSpan.textContent = trimmed;
                 reminderSpan.dataset.reminderList = trimmed;
                 reminderSpan.style.color = '#667eea';
                 reminderSpan.style.fontStyle = 'normal';
-                
-                // Update Enable button state if course is disabled
+
                 const courseItem = reminderSpan.closest('.course-item');
                 if (courseItem && courseItem.classList.contains('course-disabled')) {
                     const enableButton = courseItem.querySelector('.btn-enable');
@@ -1744,8 +1688,7 @@ async function editReminderList(courseName, currentReminderList) {
                     }
                 }
             }
-            
-            // Remove from pending changes since it's saved
+
             delete reminderListChanges[courseName];
         } else {
             showSettingsWarning('Error saving reminder list: ' + (data.error || 'Unknown error'), 'error');
@@ -1770,7 +1713,7 @@ async function bulkUpdateReminderListForCourse(courseName, newReminderList) {
     const data = await res.json();
     if (!data.success) {
         console.error('Failed to update assignments:', data.error);
-        // Don't show error to user - mapping was saved successfully
+
     }
 }
 
@@ -1796,18 +1739,16 @@ async function openSettings() {
 
 async function closeModal() {
     const modal = document.getElementById('settingsModal');
-    
-    // Save college name, auto sync, and AI summary settings before closing
+
     const input = document.getElementById('collegeName');
     const autoSyncCheckbox = document.getElementById('settingsAutoSyncReminders');
     const aiSummaryCheckbox = document.getElementById('settingsAiSummaryEnabled');
-    
+
     if (input && autoSyncCheckbox && aiSummaryCheckbox) {
         const newCollegeName = (input.value || '').trim();
         const autoSyncEnabled = autoSyncCheckbox.checked;
         const aiSummaryEnabled = aiSummaryCheckbox ? aiSummaryCheckbox.checked : true;
-        
-        // Only save if college name is provided
+
         if (newCollegeName) {
             try {
                 await fetch('/api/settings', {
@@ -1827,7 +1768,7 @@ async function closeModal() {
             }
         }
     }
-    
+
     courseEnableDisableChanges = {};
     reminderListChanges = {};
     originalCourseStates = {};
@@ -1839,15 +1780,10 @@ async function closeModal() {
     document.body.style.overflow = '';
 }
 window.onclick = function(event) {
-    const completedModal = document.getElementById('completedModal');
     const deletedModal = document.getElementById('deletedModal');
     const aiInsightsModal = document.getElementById('aiInsightsModal');
-    const addAssignmentModal = document.getElementById('addAssignmentModal');
     const settingsModal = document.getElementById('settingsModal');
 
-    if (event.target === completedModal) {
-        closeCompletedModal();
-    }
     if (event.target === deletedModal) {
         closeDeletedModal();
     }
@@ -1861,29 +1797,14 @@ window.onclick = function(event) {
 
 function displayAssignments(assignmentsToShow) {
     const container = document.getElementById('assignmentsList');
-    const completedSection = document.getElementById('completedAssignmentsSection');
-
-    // Hide the completed section
-    if (completedSection) {
-        completedSection.style.display = 'none';
-    }
-    
-    // Hide completed status
-    const completedStatus = document.getElementById('completedStatus');
-    if (completedStatus) {
-        completedStatus.style.display = 'none';
-    }
-
     let allAssignments = [...assignmentsToShow];
 
     if (allAssignments.length === 0 && currentFilter !== 'all') {
-        // For single course view with no assignments, still show the add assignment button
         if (currentFilterCourse) {
-            // Get display name from courses list
             const course = courses.find(c => (c.name || c.course_name) === currentFilterCourse);
-            const displayCourseName = course 
-                ? ((course.reminder_list && course.reminder_list.trim()) 
-                    ? course.reminder_list.trim() 
+            const displayCourseName = course
+                ? ((course.reminder_list && course.reminder_list.trim())
+                    ? course.reminder_list.trim()
                     : (course.name || course.course_name))
                 : currentFilterCourse;
             const safeFormId = currentFilterCourse.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -1904,16 +1825,14 @@ function displayAssignments(assignmentsToShow) {
             container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No assignments found.</p>';
         }
     } else {
-        // Group by class if viewing "All Classes"
         if (currentFilter === 'all') {
             const grouped = {};
-            
-            // First, add all courses from the courses list (including manually added ones with no assignments)
+
             courses.forEach(c => {
                 if (c && (c.name || c.course_name) && (c.enabled === true || c.enabled === 1 || c.enabled === '1')) {
                     const courseName = c.name || c.course_name;
-                    const displayName = (c.reminder_list && c.reminder_list.trim()) 
-                        ? c.reminder_list.trim() 
+                    const displayName = (c.reminder_list && c.reminder_list.trim())
+                        ? c.reminder_list.trim()
                         : courseName;
                     if (!grouped[displayName]) {
                         grouped[displayName] = {
@@ -1923,11 +1842,10 @@ function displayAssignments(assignmentsToShow) {
                     }
                 }
             });
-            
-            // Then, add assignments to their respective courses
+
             allAssignments.forEach(assignment => {
-                const displayCourseName = (assignment.reminder_list && assignment.reminder_list.trim()) 
-                    ? assignment.reminder_list.trim() 
+                const displayCourseName = (assignment.reminder_list && assignment.reminder_list.trim())
+                    ? assignment.reminder_list.trim()
                     : (assignment.course_name || 'Unknown Course');
                 if (!grouped[displayCourseName]) {
                     grouped[displayCourseName] = {
@@ -1937,23 +1855,21 @@ function displayAssignments(assignmentsToShow) {
                 }
                 grouped[displayCourseName].assignments.push(assignment);
             });
-            
-            // Sort courses alphabetically and assignments by due date within each course
+
             const sortedCourses = Object.keys(grouped).sort();
-            
+
             let html = '';
             sortedCourses.forEach(courseName => {
                 const courseData = grouped[courseName];
                 const officialCourseName = courseData.officialCourseName;
-                
-                // Sort assignments by due date
+
                 courseData.assignments.sort((a, b) => {
                     if (!a.due_at && !b.due_at) return 0;
                     if (!a.due_at) return 1;
                     if (!b.due_at) return -1;
                     return new Date(a.due_at) - new Date(b.due_at);
                 });
-                
+
                 const safeFormId = officialCourseName.replace(/[^a-zA-Z0-9_-]/g, '_');
                 html += `<div class="course-group-section" data-course-name="${escapeHtml(officialCourseName)}">
                     <div class="course-group-header">${escapeHtml(courseName)}</div>
@@ -1970,7 +1886,7 @@ function displayAssignments(assignmentsToShow) {
             container.innerHTML = html;
             container.classList.remove('single-course-view');
             updateAddAssignmentButtonsState();
-            // Remove spacing class from status and sync progress for "All Classes" view
+
             const statusEl = document.getElementById('status');
             const syncProgressEl = document.getElementById('syncProgress');
             if (statusEl) statusEl.classList.remove('single-course-view');
@@ -1979,11 +1895,11 @@ function displayAssignments(assignmentsToShow) {
             let html = allAssignments.map((assignment) => {
                 return createAssignmentCard(assignment);
             }).join('');
-            // Add inline form at the bottom for single course view
+
             if (currentFilterCourse) {
-                const displayCourseName = allAssignments.length > 0 
-                    ? ((allAssignments[0].reminder_list && allAssignments[0].reminder_list.trim()) 
-                        ? allAssignments[0].reminder_list.trim() 
+                const displayCourseName = allAssignments.length > 0
+                    ? ((allAssignments[0].reminder_list && allAssignments[0].reminder_list.trim())
+                        ? allAssignments[0].reminder_list.trim()
                         : allAssignments[0].course_name)
                     : currentFilterCourse;
                 const safeFormId = currentFilterCourse.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -1996,7 +1912,7 @@ function displayAssignments(assignmentsToShow) {
             container.innerHTML = html;
             container.classList.add('single-course-view');
             updateAddAssignmentButtonsState();
-            // Add spacing class to status and sync progress for specific class view
+
             const statusEl = document.getElementById('status');
             const syncProgressEl = document.getElementById('syncProgress');
             if (statusEl) statusEl.classList.add('single-course-view');
@@ -2033,11 +1949,10 @@ function createAssignmentCard(assignment) {
         }
     }
 
-    // Use reminder_list for display, fallback to course_name if not set
-    const displayCourseName = (assignment.reminder_list && assignment.reminder_list.trim()) 
-        ? assignment.reminder_list.trim() 
+    const displayCourseName = (assignment.reminder_list && assignment.reminder_list.trim())
+        ? assignment.reminder_list.trim()
         : (assignment.course_name || 'Unknown Course');
-    const courseName = assignment.course_name || 'Unknown Course'; // Keep for AI calls
+    const courseName = assignment.course_name || 'Unknown Course';
 
     let aiNotes = '';
     if (assignment.ai_notes && assignment.ai_notes.trim()) {
@@ -2068,7 +1983,7 @@ function createAssignmentCard(assignment) {
     const status = assignment.status || 'Not Started';
 
     return `
-        <div class="assignment-card" data-assignment-id="${escapeHtml(assignment.assignment_id)}" 
+        <div class="assignment-card" data-assignment-id="${escapeHtml(assignment.assignment_id)}"
              oncontextmenu="event.preventDefault(); showContextMenu(event, '${escapeHtml(assignment.assignment_id)}')"
              tabindex="0"
              onfocus="focusedAssignmentId = '${escapeHtml(assignment.assignment_id)}'"
@@ -2112,7 +2027,6 @@ function createAssignmentCard(assignment) {
     `;
 }
 
-
 function toggleAssignmentDeleted(assignmentId, checked) {
     if (checked) {
         deleteAssignment(assignmentId);
@@ -2121,17 +2035,14 @@ function toggleAssignmentDeleted(assignmentId, checked) {
     }
 }
 
-function filterAssignments() {
+async function filterAssignments() {
     let filtered = assignments.filter(a => {
         if (!a) return false;
-        
-        // Apply filter based on current view
         if (currentFilter === 'deleted') {
             return a.deleted === true;
         } else if (currentFilter === 'course' && currentFilterCourse) {
             return !a.deleted && a.course_name === currentFilterCourse;
         } else {
-            // 'all' - show all non-deleted assignments
             if (a.deleted) return false;
             return true;
         }
@@ -2145,7 +2056,7 @@ function filterAssignments() {
     });
 
     displayAssignments(filtered);
-    updateStats(filtered);
+    await updateStats(filtered);
 
     attachReminderListeners();
     attachAISummaryListeners();
@@ -2171,13 +2082,13 @@ function attachAISummaryListeners() {
 function handleReminderButtonClick(e) {
     const addButton = e.target.closest('.btn-add-reminder');
     const removeButton = e.target.closest('.btn-remove-reminder');
-    
+
     if (!addButton && !removeButton) return;
-    
+
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    
+
     if (removeButton) {
         const assignmentId = removeButton.dataset.assignmentId;
         if (assignmentId) {
@@ -2185,7 +2096,7 @@ function handleReminderButtonClick(e) {
         }
         return false;
     }
-    
+
     if (addButton) {
         if (activeAddReminderRequests > 0) {
             showStatus('A reminder is currently being added. Please wait...', 'info');
@@ -2219,13 +2130,13 @@ function handleReminderButtonClick(e) {
 function handleAISummaryButtonClick(e) {
     const generateButton = e.target.closest('.btn-generate-ai-summary');
     const removeButton = e.target.closest('.btn-remove-ai-summary');
-    
+
     if (!generateButton && !removeButton) return;
-    
+
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    
+
     if (removeButton) {
         const assignmentId = removeButton.dataset.assignmentId;
         if (assignmentId) {
@@ -2233,7 +2144,7 @@ function handleAISummaryButtonClick(e) {
         }
         return false;
     }
-    
+
     if (generateButton) {
         if (isSyncInProgress) {
             showStatus('Please wait for sync to finish before generating summaries.', 'info');
@@ -2350,13 +2261,12 @@ async function removeAISummary(assignmentId, buttonElement) {
         buttonElement.disabled = true;
         buttonElement.textContent = 'Removing...';
 
-        // Update assignment to remove AI summary and related fields
         await fetch('/api/assignments/update', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 assignment_id: assignmentId,
                 ai_notes: '',
                 time_estimate: null,
@@ -2414,7 +2324,7 @@ async function addReminder(assignmentId, buttonElement) {
                 return;
             }
         }
-        
+
         if (!assignment.reminder_list || assignment.reminder_list.trim() === '') {
             showSetupModal(false, assignmentId, `Please set a reminder list name for "${assignment.course_name}" below.`);
             return;
@@ -2486,12 +2396,12 @@ async function removeReminder(assignmentId, buttonElement) {
                 return;
             }
         }
-        
+
         if (!assignment.reminder_list || assignment.reminder_list.trim() === '') {
             showStatus('Reminder list not found.', 'error');
             return;
         }
-        
+
         buttonElement.disabled = true;
         buttonElement.textContent = 'Removing...';
 
@@ -2520,13 +2430,19 @@ async function removeReminder(assignmentId, buttonElement) {
     }
 }
 
-function updateStats(assignmentsToCount = null) {
+async function updateStats(assignmentsToCount = null) {
     const assignmentsToUse = assignmentsToCount !== null ? assignmentsToCount : assignments;
 
-    // Count based on current filter
     let total;
     if (currentFilter === 'deleted') {
-        total = assignmentsToUse.filter(a => a && a.deleted).length;
+        try {
+            const response = await fetch('/api/assignments/deleted');
+            const deleted = await response.json();
+            total = deleted && !deleted.error ? deleted.length : 0;
+        } catch (error) {
+            console.error('Error loading deleted count:', error);
+            total = 0;
+        }
     } else if (currentFilter === 'course' && currentFilterCourse) {
         total = assignmentsToUse.filter(a => a && !a.deleted && a.course_name === currentFilterCourse).length;
     } else {
@@ -2561,8 +2477,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-
-
 async function loadDeletedAssignments() {
     try {
         const response = await fetch('/api/assignments/deleted');
@@ -2578,72 +2492,25 @@ async function loadDeletedAssignments() {
     }
 }
 
-async function displayDeletedAssignments() {
-    const deleted = await loadDeletedAssignments();
-    const container = document.getElementById('deletedAssignmentsList');
-
-    if (deleted.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px; font-style: italic;">No recently deleted assignments</p>';
-        return;
-    }
-
-    container.innerHTML = deleted.map(item => {
-        const deletedDate = new Date(item.deleted_at);
-        // Check if course still exists
-        const courseExists = courses.some(c => {
-            const cName = (c.name || c.course_name || '').trim();
-            return cName.toLowerCase() === (item.course_name || '').toLowerCase();
-        });
-        const classRemoved = !courseExists;
-        
-        return `
-            <div class="deleted-assignment-card">
-                <div>
-                    <div style="font-weight: 600; margin-bottom: 5px;">${escapeHtml(item.title)}</div>
-                    <div style="font-size: 0.85em; color: #666;">
-                        ${escapeHtml(item.course_name)} • Deleted ${deletedDate.toLocaleDateString()}
-                        ${classRemoved ? '<span style="color: #d32f2f; font-weight: 600; margin-left: 8px;">(Class removed)</span>' : ''}
-                    </div>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    ${classRemoved ? '' : `<button class="btn btn-secondary" onclick="restoreAssignment('${escapeHtml(item.assignment_id)}')" style="font-size: 0.85em; padding: 6px 12px;">Restore</button>`}
-                    <button class="btn btn-secondary" onclick="permanentlyDeleteAssignment('${escapeHtml(item.assignment_id)}')" style="font-size: 0.85em; padding: 6px 12px; background: #d32f2f;">Delete Forever</button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
 async function displayDeletedAssignmentsInMainView() {
     const deleted = await loadDeletedAssignments();
     const container = document.getElementById('assignmentsList');
-    const completedSection = document.getElementById('completedAssignmentsSection');
-    
-    // Hide completed section
-    if (completedSection) {
-        completedSection.style.display = 'none';
-    }
-    
-    // Hide completed status
-    const completedStatus = document.getElementById('completedStatus');
-    if (completedStatus) {
-        completedStatus.style.display = 'none';
-    }
 
     if (deleted.length === 0) {
         container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px; font-style: italic;">No recently deleted assignments</p>';
+        await updateStats();
         return;
     }
 
     container.innerHTML = deleted.map(item => {
         const deletedDate = new Date(item.deleted_at);
-        // Check if course still exists
+
         const courseExists = courses.some(c => {
             const cName = (c.name || c.course_name || '').trim();
             return cName.toLowerCase() === (item.course_name || '').toLowerCase();
         });
         const classRemoved = !courseExists;
-        
+
         return `
             <div class="deleted-assignment-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #ffffff; border: 1px solid #e5e5e7; border-radius: 8px;">
                 <div>
@@ -2660,13 +2527,8 @@ async function displayDeletedAssignmentsInMainView() {
             </div>
         `;
     }).join('');
-}
-
-function toggleDeletedSection() {
-    const modal = document.getElementById('deletedModal');
-    modal.style.display = 'block';
-    document.body.style.overflow = 'hidden';
-    displayDeletedAssignments();
+    
+    await updateStats();
 }
 
 function closeDeletedModal() {
@@ -2677,7 +2539,7 @@ function closeDeletedModal() {
 
 async function restoreAssignment(assignmentId) {
     try {
-        // Check if assignment's course still exists
+
         const deleted = await loadDeletedAssignments();
         const deletedAssignment = deleted.find(a => a.assignment_id === assignmentId);
         if (deletedAssignment) {
@@ -2690,7 +2552,7 @@ async function restoreAssignment(assignmentId) {
                 return;
             }
         }
-        
+
         const response = await fetch('/api/assignments/restore', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2703,7 +2565,7 @@ async function restoreAssignment(assignmentId) {
             if (currentFilter === 'deleted') {
                 displayDeletedAssignmentsInMainView();
             } else {
-                filterAssignments();
+                await filterAssignments();
             }
         } else {
             showStatus('Error: ' + (data.error || 'Unknown error'), 'error');
@@ -2731,7 +2593,7 @@ async function permanentlyDeleteAssignment(assignmentId) {
                 displayDeletedAssignmentsInMainView();
             } else {
                 await loadAssignments();
-                filterAssignments();
+                await filterAssignments();
             }
         } else {
             showStatus('Error: ' + (data.error || 'Unknown error'), 'error');
@@ -2755,7 +2617,7 @@ async function deleteAssignment(assignmentId) {
             if (currentFilter === 'deleted') {
                 displayDeletedAssignmentsInMainView();
             } else {
-                filterAssignments();
+                await filterAssignments();
             }
         } else {
             showStatus('Error: ' + (data.error || 'Unknown error'), 'error');
@@ -2765,13 +2627,12 @@ async function deleteAssignment(assignmentId) {
     }
 }
 
-
 function handleKeyboardShortcuts(e) {
-    // Only handle if not typing in an input/textarea
+
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         return;
     }
-    
+
     if ((e.key === 'Delete' || e.key === 'Backspace') && focusedAssignmentId) {
         e.preventDefault();
         deleteAssignment(focusedAssignmentId);
@@ -2780,14 +2641,12 @@ function handleKeyboardShortcuts(e) {
 
 function showContextMenu(e, assignmentId) {
     e.preventDefault();
-    
-    // Remove existing context menu
+
     const existingMenu = document.getElementById('contextMenu');
     if (existingMenu) {
         existingMenu.remove();
     }
-    
-    // Create context menu
+
     const menu = document.createElement('div');
     menu.id = 'contextMenu';
     menu.className = 'context-menu';
@@ -2800,10 +2659,9 @@ function showContextMenu(e, assignmentId) {
             Delete
         </button>
     `;
-    
+
     document.body.appendChild(menu);
-    
-    // Close menu when clicking outside
+
     setTimeout(() => {
         const closeMenu = (event) => {
             if (!menu.contains(event.target)) {
@@ -2816,26 +2674,14 @@ function showContextMenu(e, assignmentId) {
 }
 
 function handleRightClick(e) {
-    // Let the assignment card handle its own context menu
     if (e.target.closest('.assignment-card')) {
         return;
     }
-    
-    // Close context menu if clicking elsewhere
+
     const contextMenu = document.getElementById('contextMenu');
     if (contextMenu) {
         contextMenu.remove();
     }
-}
-
-function bulkDelete() {
-    if (selectedAssignments.size === 0) return;
-    if (!confirm(`Delete ${selectedAssignments.size} assignment(s)? They will be moved to Recently Deleted.`)) {
-        return;
-    }
-    const ids = Array.from(selectedAssignments);
-    ids.forEach(id => deleteAssignment(id));
-    cancelBulkSelection();
 }
 
 let insightsExist = false;
@@ -2932,10 +2778,10 @@ async function showAIInsights(forceRefresh = false, endDate = null) {
     const closeBtn = modal ? modal.querySelector('.close') : null;
 
     isInsightsModalLoading = true;
+    if (refreshBtn) refreshBtn.disabled = true;
     refreshPrimaryButtonsState();
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden';
-    refreshBtn.disabled = true;
     if (closeBtn) closeBtn.style.display = 'none';
 
     requestAnimationFrame(() => {
@@ -3135,49 +2981,6 @@ function closeAssignmentDetailsModal() {
     document.getElementById('assignmentDetailsModal').style.display = 'none';
 }
 
-function bulkDelete() {
-    if (selectedAssignments.size === 0) return;
-    const ids = Array.from(selectedAssignments);
-    for (const id of ids) {
-        deleteAssignment(id);
-    }
-    cancelBulkSelection();
-}
-async function bulkAddReminders() {
-    if (selectedAssignments.size === 0) return;
-    const ids = Array.from(selectedAssignments);
-    for (const id of ids) {
-        await addReminder(id);
-    }
-    cancelBulkSelection();
-}
-
-function cancelBulkSelection() {
-    selectedAssignments.clear();
-    document.getElementById('bulkActions').style.display = 'none';
-    filterAssignments();
-}
-
-async function bulkUpdateAssignments(assignmentIds, fields) {
-    try {
-        const response = await fetch('/api/assignments/bulk-update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ assignment_ids: assignmentIds, fields })
-        });
-        const data = await response.json();
-        if (data.success) {
-            showStatus(`Updated ${data.updated} assignments`, 'success');
-            loadAssignments();
-            cancelBulkSelection();
-        } else {
-            showStatus('Error: ' + (data.error || 'Unknown error'), 'error');
-        }
-    } catch (error) {
-        showStatus('Error updating assignments: ' + error.message, 'error');
-    }
-}
-
 async function updateAssignmentField(assignmentId, field, value) {
     try {
         const response = await fetch('/api/assignments/update', {
@@ -3191,8 +2994,7 @@ async function updateAssignmentField(assignmentId, field, value) {
             if (assignment) {
                 assignment[field] = value;
             }
-            filterAssignments();
-            updateStats();
+            await filterAssignments();
         } else {
             throw new Error(data.error || 'Failed to update assignment');
         }
@@ -3208,82 +3010,72 @@ async function openAddClassModal() {
         return;
     }
     const trimmedCourseName = courseName.trim();
-    
-    // Check if course already exists in courses list
+
     await loadCourses();
     const existingCourse = courses.find(c => {
         const cName = (c.name || c.course_name || '').trim();
         return cName.toLowerCase() === trimmedCourseName.toLowerCase();
     });
-    
-    // Also check if course exists in assignments
+
     const existingInAssignments = assignments.some(a => {
         const aName = (a.course_name || '').trim();
         return aName.toLowerCase() === trimmedCourseName.toLowerCase();
     });
-    
+
     if (existingCourse || existingInAssignments) {
         showStatus('A class with this name already exists', 'error');
         return;
     }
-    
-    // For manual classes, use the same name for both course name and reminder list
+
     try {
-        // Save the course mapping
+
         const response = await fetch('/api/course-mapping', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                course_name: trimmedCourseName, 
-                reminder_list: trimmedCourseName 
+            body: JSON.stringify({
+                course_name: trimmedCourseName,
+                reminder_list: trimmedCourseName
             })
         });
-        
+
         if (!response.ok) {
             throw new Error('Failed to add class');
         }
-        
+
         showStatus('Class added successfully', 'success');
         await loadCourses();
-        populateSidebarCourses();
+        await populateSidebarCourses();
     } catch (error) {
         showStatus('Error adding class: ' + error.message, 'error');
     }
 }
 
 function showInlineAssignmentForm(courseName, displayCourseName) {
-    // Don't allow opening form if sync is in progress
     if (isSyncInProgress) {
         showStatus('Please wait for sync to finish before adding assignments.', 'info');
         return;
     }
-    
-    // Don't allow opening form if already adding an assignment
+
     if (isAddingAssignment) {
         return;
     }
-    
-    // Hide any other open inline forms
+
     document.querySelectorAll('.inline-assignment-form').forEach(form => {
         form.style.display = 'none';
     });
-    
-    // Use a safe ID that matches what we use in displayAssignments
+
     const safeFormId = `inline-form-${courseName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
     let formContainer = document.getElementById(safeFormId);
-    
+
     if (!formContainer) {
-        // Create form container if it doesn't exist
         formContainer = document.createElement('div');
         formContainer.id = safeFormId;
         formContainer.className = 'inline-assignment-form';
-        
-        // Find the parent container and append
+
         const assignmentsList = document.getElementById('assignmentsList');
         if (assignmentsList) {
             assignmentsList.appendChild(formContainer);
         } else {
-            // Try to find course group section
             const courseSection = document.querySelector(`[data-course-name="${courseName}"]`);
             if (courseSection) {
                 const assignmentsDiv = courseSection.querySelector('.course-group-assignments');
@@ -3293,10 +3085,10 @@ function showInlineAssignmentForm(courseName, displayCourseName) {
             }
         }
     }
-    
+
     const escapedCourseName = courseName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const escapedDisplayName = displayCourseName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    
+
     formContainer.innerHTML = `
         <div class="inline-assignment-form-content">
             <div class="inline-form-group">
@@ -3320,7 +3112,7 @@ function showInlineAssignmentForm(courseName, displayCourseName) {
             </div>
         </div>
     `;
-    
+
     formContainer.style.display = 'block';
     const titleInput = document.getElementById(`inline-title-${escapedCourseName.replace(/[^a-zA-Z0-9_-]/g, '_')}`);
     if (titleInput) titleInput.focus();
@@ -3392,14 +3184,12 @@ async function saveInlineAssignment(courseName, displayCourseName, useAI = false
     if (progressTop) progressTop.style.display = 'none';
 
     try {
-        // Get reminder list for this course
         let reminderList = '';
-        const course = courses.find(c => c.course_name === courseName);
+        const course = courses.find(c => (c.name || c.course_name) === courseName);
         if (course) {
             reminderList = course.reminder_list || '';
         }
-        
-        // If no reminder list found, use displayCourseName as fallback
+
         if (!reminderList || reminderList.trim() === '') {
             reminderList = displayCourseName;
         }
@@ -3430,7 +3220,7 @@ async function saveInlineAssignment(courseName, displayCourseName, useAI = false
                 progressText.textContent = 'Assignment added successfully!';
             }
             await loadAssignments();
-            updateStats();
+            await updateStats();
             updateAddAssignmentButtonsState();
 
             setTimeout(() => {

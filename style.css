@@ -1,3 +1,8 @@
+/*
+    StudySync AI - Stylesheet.
+    Defines all styling for the application including layout, colors, typography, and responsive design.
+*/
+
 * {
     margin: 0;
     padding: 0;
@@ -51,7 +56,6 @@ body {
     overflow: hidden;
 }
 
-/* Sidebar Styles - macOS Tahoe style */
 .sidebar {
     width: 260px;
     background: #f5f5f7;
@@ -231,7 +235,6 @@ body {
     white-space: nowrap;
 }
 
-/* Main Content Styles */
 .main-content {
     flex: 1;
     display: flex;
@@ -269,20 +272,6 @@ body {
     flex-wrap: wrap;
 }
 
-.completed-status {
-    font-size: 13px;
-    color: #86868b;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.completed-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
 .link-button {
     background: none;
     border: none;
@@ -295,12 +284,6 @@ body {
 
 .link-button:hover {
     text-decoration: underline;
-}
-
-.completed-section {
-    margin-top: 24px;
-    padding-top: 24px;
-    border-top: 1px solid #e5e5e7;
 }
 
 .assignment-notes-field {
@@ -445,29 +428,6 @@ header {
     flex: 1;
 }
 
-.btn-icon {
-    background: transparent;
-    border: 2px solid var(--primary-color);
-    color: var(--primary-color);
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    font-size: 1.3em;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--shadow-sm);
-}
-
-.btn-icon:hover {
-    background: var(--primary-color);
-    color: var(--bg-primary);
-    transform: scale(1.05);
-    box-shadow: var(--shadow-md);
-}
-
 h1 {
     font-size: 2.8em;
     background: var(--gradient-primary);
@@ -565,12 +525,18 @@ h1 {
     border: 1px solid var(--border-color);
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
     background: var(--bg-tertiary);
     border-color: var(--primary-color);
     color: var(--primary-color);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
+}
+
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .status {
@@ -724,7 +690,6 @@ h1 {
     border-radius: 2px;
     box-shadow: none;
 }
-
 
 .assignments-header {
     display: flex;
@@ -1384,30 +1349,6 @@ h1 {
     padding-right: 40px;
 }
 
-
-.bulk-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 15px 20px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    margin-bottom: 20px;
-    box-shadow: var(--shadow-sm);
-}
-
-.bulk-actions span {
-    font-weight: 600;
-    margin-right: auto;
-}
-
-.bulk-actions .btn {
-    padding: 8px 16px;
-    font-size: 0.9em;
-}
-
 .assignment-meta {
     display: flex;
     align-items: center;
@@ -1415,31 +1356,6 @@ h1 {
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
-}
-
-.completed-assignments-list {
-    margin-top: 20px;
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
-.completed-assignment-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px;
-    margin-bottom: 10px;
-    background: var(--bg-secondary);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-    border-left: 3px solid var(--success-color);
-    transition: all 0.2s;
-}
-
-.completed-assignment-card:hover {
-    background: var(--bg-tertiary);
-    transform: translateX(2px);
-    box-shadow: var(--shadow-sm);
 }
 
 .assignment-checkbox {
@@ -1494,22 +1410,6 @@ h1 {
     color: var(--text-primary);
 }
 
-.btn-add-reminder {
-    color: var(--primary-color);
-}
-
-.btn-remove-reminder {
-    color: var(--success-color);
-}
-
-.btn-generate-ai-summary {
-    color: var(--primary-color);
-}
-
-.btn-remove-ai-summary {
-    color: var(--error-color);
-}
-
 .btn-icon:hover {
     opacity: 1;
 }
@@ -1543,7 +1443,6 @@ h1 {
     transform: translateX(2px);
     box-shadow: var(--shadow-sm);
 }
-
 
 @media (max-width: 768px) {
     body {
@@ -1751,8 +1650,6 @@ h1 {
     }
 }
 
-
-/* Inline Assignment Form */
 .inline-assignment-form {
     margin-top: 12px;
     padding: 16px;
@@ -1871,7 +1768,6 @@ h1 {
     color: #1d1d1f;
 }
 
-/* Add Assignment Hint */
 .add-assignment-hint {
     margin-top: 12px;
     padding: 12px 16px;

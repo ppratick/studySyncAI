@@ -1,4 +1,8 @@
-import os
+"""
+Backend modules for StudySync AI.
+Contains Database, AIEnhancer, RemindersManager, CanvasAPI, and AssignmentProcessor classes.
+"""
+
 import re
 import html
 import json
@@ -11,7 +15,6 @@ EST = ZoneInfo("America/New_York")
 from pathlib import Path
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 
 class Database:
     def __init__(self, db_path="studysync.db"):
@@ -21,9 +24,7 @@ class Database:
 
     def init_database(self):
         try:
-            if not self.db_path.exists():
-                pass  # Database will be created automatically
-            elif self.db_path.stat().st_size == 0:
+            if self.db_path.exists() and self.db_path.stat().st_size == 0:
                 print(f"Database file is empty at {self.db_path}, recreating...")
                 self.db_path.unlink()
 
@@ -31,12 +32,107 @@ class Database:
             cursor = conn.cursor()
 
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            cursor.fetchall()
+            existing_tables = [row[0] for row in cursor.fetchall()]
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    assignment_id TEXT UNIQUE NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    due_at TEXT NOT NULL,
+                    course_name TEXT NOT NULL,
+                    reminder_list TEXT NOT NULL,
+                    ai_notes TEXT,
+                    reminder_added INTEGER DEFAULT 0,
+                    status TEXT DEFAULT "Not Started",
+                    priority TEXT DEFAULT "Medium",
+                    user_notes TEXT DEFAULT "",
+                    deleted INTEGER DEFAULT 0,
+                    deleted_at TIMESTAMP DEFAULT NULL,
+                    time_estimate REAL DEFAULT NULL,
+                    suggested_priority TEXT DEFAULT NULL,
+                    ai_confidence INTEGER DEFAULT NULL,
+                    ai_confidence_explanation TEXT DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS deleted_assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    assignment_id TEXT UNIQUE NOT NULL,
+                    title TEXT NOT NULL,
+                    course_name TEXT NOT NULL,
+                    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS courses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_name TEXT UNIQUE NOT NULL,
+                    reminder_list TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT UNIQUE NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ai_insights (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    insights_json TEXT NOT NULL,
+                    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_sync_before TIMESTAMP,
+                    end_date TEXT
+                )
+            ''')
+
+            if 'assignments' in existing_tables:
+                new_columns = [
+                    ('status', 'TEXT DEFAULT "Not Started"'),
+                    ('priority', 'TEXT DEFAULT "Medium"'),
+                    ('user_notes', 'TEXT DEFAULT ""'),
+                    ('deleted', 'INTEGER DEFAULT 0'),
+                    ('deleted_at', 'TIMESTAMP DEFAULT NULL'),
+                    ('time_estimate', 'REAL DEFAULT NULL'),
+                    ('suggested_priority', 'TEXT DEFAULT NULL'),
+                    ('ai_confidence', 'INTEGER DEFAULT NULL'),
+                    ('ai_confidence_explanation', 'TEXT DEFAULT NULL')
+                ]
+
+                for column_name, column_def in new_columns:
+                    try:
+                        cursor.execute(f'ALTER TABLE assignments ADD COLUMN {column_name} {column_def}')
+                    except sqlite3.OperationalError as e:
+                        if 'duplicate column' not in str(e).lower():
+                            raise
+
+            if 'courses' in existing_tables:
+                try:
+                    cursor.execute('ALTER TABLE courses ADD COLUMN enabled INTEGER DEFAULT 1')
+                except sqlite3.OperationalError as e:
+                    if 'duplicate column' not in str(e).lower():
+                        raise
+
+            conn.commit()
+            conn.close()
         except (sqlite3.Error, OSError) as e:
             print(f"Database error detected: {e}. Recreating database...")
 
             try:
-                conn.close()
+                if 'conn' in locals():
+                    conn.close()
             except Exception:
                 pass
 
@@ -46,107 +142,84 @@ class Database:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
 
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS assignments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                assignment_id TEXT UNIQUE NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                due_at TEXT NOT NULL,
-                course_name TEXT NOT NULL,
-                reminder_list TEXT NOT NULL,
-                ai_notes TEXT,
-                reminder_added INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+            cursor.execute('''
+                CREATE TABLE assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    assignment_id TEXT UNIQUE NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    due_at TEXT NOT NULL,
+                    course_name TEXT NOT NULL,
+                    reminder_list TEXT NOT NULL,
+                    ai_notes TEXT,
+                    reminder_added INTEGER DEFAULT 0,
+                    status TEXT DEFAULT "Not Started",
+                    priority TEXT DEFAULT "Medium",
+                    user_notes TEXT DEFAULT "",
+                    deleted INTEGER DEFAULT 0,
+                    deleted_at TIMESTAMP DEFAULT NULL,
+                    time_estimate REAL DEFAULT NULL,
+                    suggested_priority TEXT DEFAULT NULL,
+                    ai_confidence INTEGER DEFAULT NULL,
+                    ai_confidence_explanation TEXT DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        new_columns = [
-            ('reminder_added', 'INTEGER DEFAULT 0'),
-            ('status', 'TEXT DEFAULT "Not Started"'),
-            ('priority', 'TEXT DEFAULT "Medium"'),
-            ('user_notes', 'TEXT DEFAULT ""'),
-            ('deleted', 'INTEGER DEFAULT 0'),
-            ('deleted_at', 'TIMESTAMP DEFAULT NULL'),
-            ('time_estimate', 'REAL DEFAULT NULL'),
-            ('suggested_priority', 'TEXT DEFAULT NULL'),
-            ('ai_confidence', 'INTEGER DEFAULT NULL'),
-            ('ai_confidence_explanation', 'TEXT DEFAULT NULL')
-        ]
+            cursor.execute('''
+                CREATE TABLE deleted_assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    assignment_id TEXT UNIQUE NOT NULL,
+                    title TEXT NOT NULL,
+                    course_name TEXT NOT NULL,
+                    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS deleted_assignments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                assignment_id TEXT UNIQUE NOT NULL,
-                title TEXT NOT NULL,
-                course_name TEXT NOT NULL,
-                deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+            cursor.execute('''
+                CREATE TABLE courses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_name TEXT UNIQUE NOT NULL,
+                    reminder_list TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        for column_name, column_def in new_columns:
-            try:
-                cursor.execute(f'ALTER TABLE assignments ADD COLUMN {column_name} {column_def}')
-            except sqlite3.OperationalError as e:
-                if 'duplicate column' not in str(e).lower():
-                    raise
+            cursor.execute('''
+                CREATE TABLE settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT UNIQUE NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS courses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                course_name TEXT UNIQUE NOT NULL,
-                reminder_list TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+            cursor.execute('''
+                CREATE TABLE ai_insights (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    insights_json TEXT NOT NULL,
+                    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_sync_before TIMESTAMP,
+                    end_date TEXT
+                )
+            ''')
 
-        try:
-            cursor.execute('ALTER TABLE courses ADD COLUMN enabled INTEGER DEFAULT 1')
-        except sqlite3.OperationalError as e:
-            if 'duplicate column' not in str(e).lower():
-                raise
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key TEXT UNIQUE NOT NULL,
-                value TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ai_insights (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                insights_json TEXT NOT NULL,
-                generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_sync_before TIMESTAMP,
-                end_date TEXT
-            )
-        ''')
-
-        try:
-            cursor.execute('ALTER TABLE ai_insights ADD COLUMN end_date TEXT')
-        except sqlite3.OperationalError as e:
-            if 'duplicate column' not in str(e).lower():
-                raise
-
-        conn.commit()
-        conn.close()
+            conn.commit()
+            conn.close()
 
     def get_connection(self):
+        if not self.db_path.exists():
+            print("Database file missing, reinitializing...")
+            self.init_database()
+        
         try:
-            if not self.db_path.exists():
-                print("Database file missing, reinitializing...")
-                self.init_database()
             conn = sqlite3.connect(str(self.db_path))
-
             conn.execute("SELECT 1").fetchone()
             return conn
         except (sqlite3.Error, OSError) as e:
             print(f"Database connection error: {e}. Reinitializing...")
-
             try:
                 if self.db_path.exists():
                     self.db_path.unlink()
@@ -185,22 +258,7 @@ class Database:
         conn.commit()
         conn.close()
 
-    def update_assignment_field(self, assignment_id, field, value):
-        """Update a specific field of an assignment"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(f'''
-            UPDATE assignments
-            SET {field} = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE assignment_id = ?
-        ''', (value, assignment_id))
-
-        conn.commit()
-        conn.close()
-
     def update_assignment_fields(self, assignment_id, **fields):
-        """Update multiple fields of an assignment at once"""
         if not fields:
             return
 
@@ -313,7 +371,6 @@ class Database:
         return result if result else (None, None)
 
     def get_all_courses_from_db(self):
-        """Get all courses from the database (both Canvas and manually added)"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -324,7 +381,6 @@ class Database:
         return [{'name': row[0], 'reminder_list': row[1] or '', 'enabled': row[2]} for row in results]
 
     def permanently_delete_course(self, course_name):
-        """Permanently delete a course from the database"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -357,7 +413,6 @@ class Database:
         return result[0] if result else None
 
     def save_ai_insights(self, insights_json, last_sync_before, end_date):
-        """Save AI insights to cache"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -374,7 +429,6 @@ class Database:
         conn.close()
 
     def get_ai_insights(self):
-        """Get cached AI insights"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -397,11 +451,9 @@ class Database:
         return None
 
     def get_last_sync_timestamp(self):
-        """Get timestamp of last sync (stored in settings)"""
         return self.get_setting('last_sync_timestamp')
 
     def set_last_sync_timestamp(self, timestamp):
-        """Set timestamp of last sync"""
         self.save_setting('last_sync_timestamp', timestamp)
 
     def get_all_assignments(self, include_deleted=False):
@@ -425,7 +477,6 @@ class Database:
         return results
 
     def delete_assignment(self, assignment_id):
-        """Mark assignment as deleted and add to deleted_assignments table"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -444,7 +495,6 @@ class Database:
         conn.close()
 
     def is_assignment_permanently_deleted(self, assignment_id):
-        """Check if an assignment is in deleted_assignments (permanently deleted)"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -455,7 +505,6 @@ class Database:
         return result is not None
 
     def get_deleted_assignments(self):
-        """Get all deleted assignments"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -470,7 +519,6 @@ class Database:
         return results
 
     def restore_assignment(self, assignment_id):
-        """Remove from deleted_assignments and mark as not deleted"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -482,28 +530,22 @@ class Database:
         conn.close()
 
     def permanently_delete_assignment(self, assignment_id):
-        """Permanently delete assignment from assignments table, but keep in deleted_assignments to prevent re-sync"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # Get assignment info before deleting
         cursor.execute('SELECT title, course_name FROM assignments WHERE assignment_id = ?', (assignment_id,))
         assignment = cursor.fetchone()
-        
-        # Delete from assignments table
+
         cursor.execute('DELETE FROM assignments WHERE assignment_id = ?', (assignment_id,))
-        
-        # Keep in deleted_assignments (or add if not already there) to prevent it from being re-added on sync
+
         if assignment:
             cursor.execute('''
                 INSERT OR REPLACE INTO deleted_assignments (assignment_id, title, course_name, deleted_at)
                 VALUES (?, ?, ?, COALESCE((SELECT deleted_at FROM deleted_assignments WHERE assignment_id = ?), CURRENT_TIMESTAMP))
             ''', (assignment_id, assignment[0], assignment[1], assignment_id))
         else:
-            # If assignment doesn't exist in assignments table, check if it's in deleted_assignments
             cursor.execute('SELECT assignment_id FROM deleted_assignments WHERE assignment_id = ?', (assignment_id,))
             if not cursor.fetchone():
-                # If not in deleted_assignments either, add a placeholder entry
                 cursor.execute('''
                     INSERT INTO deleted_assignments (assignment_id, title, course_name, deleted_at)
                     VALUES (?, 'Unknown', 'Unknown', CURRENT_TIMESTAMP)
@@ -520,9 +562,16 @@ class AIEnhancer:
         self.ollama_model = ollama_model
         self.ollama_url = "http://localhost:11434/api/generate"
         self.model = self._initialize_model()
+        self.prompts_dir = Path(__file__).parent / "prompts"
+        self.assignment_prompt_template = self._load_prompt("assignment_enhancement.txt")
+        self.insights_prompt_template = self._load_prompt("comprehensive_insights.txt")
+
+    def _load_prompt(self, filename):
+        prompt_path = self.prompts_dir / filename
+        with open(prompt_path, 'r', encoding='utf-8') as f:
+            return f.read()
 
     def _initialize_model(self):
-        
         try:
             response = requests.get("http://localhost:11434/api/tags", timeout=2)
             if response.status_code == 200:
@@ -546,63 +595,12 @@ class AIEnhancer:
             else:
                 clean_description = "No description provided"
 
-            prompt = f"""You are an AI academic assistant helping a university student estimate workload and focus areas for assignments.
+            prompt = self.assignment_prompt_template.format(
+                college_name=college_name,
+                assignment_title=assignment_title,
+                clean_description=clean_description
+            )
 
-INPUTS:
-
-College: {college_name}
-
-Assignment: {assignment_title}
-
-Description: {clean_description}
-
-TASK:
-
-Estimate realistic workload metrics for this assignment. Assume the student is full-time, balancing 4-5 courses. Be *conservative but practical* in your time estimates and avoid over-optimism.
-
-GUIDELINES:
-
-- Homework or short reflections → 1-3 hours
-
-- Medium assignments → 3-8 hours
-
-- Large projects or papers → 10-30 hours
-
-- Capstone / Final projects → 30-60 hours
-
-Difficulty scale:
-
-- Easy = routine tasks, low uncertainty
-
-- Medium = moderate research, coding, or writing load
-
-- Hard = complex, creative, or multi-step project
-
-Confidence should reflect:
-
-1. How specific the description is
-
-2. How typical the workload is for this course type
-
-3. How clearly the requirements are stated
-
-OUTPUT:
-
-Return *only* the following fields in plain text — no extra commentary or punctuation.
-
-Time: <number only, integer hours>
-
-Priority: High / Medium / Low
-
-Difficulty: Easy / Medium / Hard
-
-Notes: <1 short actionable tip, ≤15 words>
-
-Confidence: <1-5>
-
-ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>"""
-
-            
             if self.model == "ollama":
                 ai_response = self._call_ollama(prompt)
             else:
@@ -676,10 +674,9 @@ ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>"""
         return True
 
     def _call_ollama(self, prompt):
-        """Call Ollama API to generate response"""
         try:
             timeout = 120
-            
+
             payload = {
                 "model": self.ollama_model,
                 "prompt": prompt,
@@ -706,7 +703,6 @@ ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>"""
             return "Unknown error"
 
     def generate_comprehensive_insights(self, assignments_data, college_name, end_date):
-        """Generate comprehensive AI insights from all assignments"""
         if not self.model:
             return None
 
@@ -739,86 +735,15 @@ ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>"""
                     'description': assignment.get('description', '')[:200]
                 })
 
-            prompt = f"""You are an AI study assistant evaluating a student's total assignment workload.
-
-INPUT:
-
-College: {college_name}
-
-Today's Date: {today}
-
-Target End Date: {end_date_formatted}
-
-Assignments: {json.dumps(assignments_summary, indent=2)}
-
-TASK:
-
-Analyze the workload between today and the target end date.
-
-Estimate total hours remaining, identify busiest upcoming periods, and determine which assignments require the most immediate attention.
-
-Generate actionable insights and a concise summary report that a college student can read and immediately act upon.
-
-INSTRUCTIONS:
-
-- Use today's date and assignment due dates to assess urgency and prioritize tasks.
-
-- Consider each assignment's difficulty level and time estimates when making recommendations.
-
-- Assume ~10-12 study hours per day is the sustainable maximum for a full-time student.
-
-- Be direct, practical, and encouraging — write like an experienced academic coach providing personalized guidance.
-
-- All dates must be written in MM-DD-YYYY format.
-
-- Focus on actionable advice that helps the student manage their time effectively and avoid burnout.
-
-OUTPUT:
-
-Return a JSON object with the following structure:
-
-{{
-    "summary_report": "A concise paragraph-style report (2-4 sentences) that summarizes the key insights and actionable advice for the student",
-    "summary_confidence": <1-5>,
-    "summary_confidence_explanation": "Brief explanation of confidence level",
-    "workload_analysis": {{
-        "overall_assessment": "Brief assessment of workload (e.g., 'Manageable', 'Heavy', 'Critical overload')",
-        "busy_periods": ["List of dates/periods with high assignment density in MM-DD-YYYY format"],
-        "total_hours_estimated": <total hours>,
-        "course_difficulty_comparison": {{"course_name": "difficulty level"}},
-        "risk_assessment": "Brief assessment of at-risk assignments or periods"
-    }},
-    "workload_confidence": <1-5>,
-    "workload_confidence_explanation": "Brief explanation of confidence level",
-    "priority_recommendations": [
-        {{
-            "assignment_title": "title",
-            "reason": "Why this should be prioritized",
-            "suggested_start_date": "date in MM-DD-YYYY format",
-            "urgency_level": "High/Medium/Low"
-        }}
-    ],
-    "priority_confidence": <1-5>,
-    "priority_confidence_explanation": "Brief explanation of confidence level",
-    "conflict_detection": {{
-        "overlapping_deadlines": ["List of dates with multiple assignments due in MM-DD-YYYY format"],
-        "scheduling_conflicts": "Any identified conflicts",
-        "early_start_recommendations": ["Assignments that should be started early"]
-    }},
-    "conflict_confidence": <1-5>,
-    "conflict_confidence_explanation": "Brief explanation of confidence level"
-}}
-
-Confidence ratings (1-5) should reflect:
-- How complete and accurate the assignment data is
-- How clear the patterns and trends are
-- How certain the recommendations are based on the available information
-- Lower confidence (1-2) if data is limited or patterns are unclear
-- Higher confidence (4-5) if data is comprehensive and patterns are clear
-
-Return ONLY valid JSON, no other text."""
-
+            assignments_json = json.dumps(assignments_summary, indent=2)
             
+            prompt = self.insights_prompt_template.format(
+                college_name=college_name,
+                today=today,
+                end_date_formatted=end_date_formatted,
+                assignments_json=assignments_json
+            )
+
             if self.model == "ollama":
                 ai_response = self._call_ollama(prompt)
             else:
@@ -903,10 +828,10 @@ class CanvasAPI:
         with ThreadPoolExecutor(max_workers=2) as executor:
             assignments_future = executor.submit(self.fetch_course_assignments, course_id)
             discussions_future = executor.submit(self.fetch_course_discussions, course_id)
-            
+
             assignments = assignments_future.result()
             discussions = discussions_future.result()
-        
+
         return assignments + discussions
 
 class AssignmentProcessor:
@@ -980,11 +905,11 @@ class AssignmentProcessor:
             if existing and len(existing) > 7 and existing[7] and existing[7].strip():
                 ai_notes = existing[7]
 
-                if existing and len(existing) > 13:
-                    time_estimate = existing[13] if existing[13] else None
-                    suggested_priority = existing[14] if len(existing) > 14 and existing[14] else None
-                    ai_confidence = existing[15] if len(existing) > 15 and existing[15] else None
-                    ai_confidence_explanation = existing[16] if len(existing) > 16 and existing[16] else None
+                if existing and len(existing) > 16:
+                    time_estimate = existing[16] if existing[16] else None
+                    suggested_priority = existing[17] if len(existing) > 17 and existing[17] else None
+                    ai_confidence = existing[18] if len(existing) > 18 and existing[18] else None
+                    ai_confidence_explanation = existing[19] if len(existing) > 19 and existing[19] else None
             else:
                 ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = self.ai_enhancer.enhance_assignment(title, description, course_name, college_name)
 

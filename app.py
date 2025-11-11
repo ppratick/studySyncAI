@@ -178,32 +178,57 @@ def permanently_delete_assignment():
 @app.route('/api/courses')
 def get_courses():
     try:
-        api_token = os.getenv("CANVAS_API_TOKEN")
-        canvas_domain = os.getenv("CANVAS_DOMAIN")
-        if not api_token or not canvas_domain:
-            return jsonify({'error': 'Canvas API not configured'}), 500
-        
-        headers = {"Authorization": f"Bearer {api_token}"}
-        base_url = f"https://{canvas_domain}/api/v1"
-        
-        response = requests.get(f"{base_url}/users/self/favorites/courses", headers=headers)
-        response.raise_for_status()
-        courses = response.json()
+        # Get all courses from database (includes manually added ones)
+        db_courses = db.get_all_courses_from_db()
+        db_course_names = {c['name']: c for c in db_courses}
         
         result = []
-        for course in courses:
-            course_name = course.get("name", "Unnamed Course")
-            reminder_list, enabled = db.get_course_mapping_with_enabled(course_name)
-            
-            if reminder_list is None:
-                reminder_list = ''
-                enabled = None
-            result.append({
-                'id': course.get('id'),
-                'name': course_name,
-                'reminder_list': reminder_list or '',
-                'enabled': enabled if enabled is not None else True
-            })
+        
+        # Try to get Canvas courses if configured
+        api_token = os.getenv("CANVAS_API_TOKEN")
+        canvas_domain = os.getenv("CANVAS_DOMAIN")
+        if api_token and canvas_domain:
+            try:
+                headers = {"Authorization": f"Bearer {api_token}"}
+                base_url = f"https://{canvas_domain}/api/v1"
+                
+                response = requests.get(f"{base_url}/users/self/favorites/courses", headers=headers)
+                response.raise_for_status()
+                canvas_courses = response.json()
+                
+                for course in canvas_courses:
+                    course_name = course.get("name", "Unnamed Course")
+                    db_course = db_course_names.get(course_name)
+                    
+                    if db_course:
+                        reminder_list = db_course['reminder_list']
+                        enabled = db_course['enabled']
+                    else:
+                        reminder_list, enabled = db.get_course_mapping_with_enabled(course_name)
+                        if reminder_list is None:
+                            reminder_list = ''
+                            enabled = True
+                    
+                    result.append({
+                        'id': course.get('id'),
+                        'name': course_name,
+                        'reminder_list': reminder_list or '',
+                        'enabled': enabled if enabled is not None else True
+                    })
+            except Exception as e:
+                # If Canvas API fails, just use database courses
+                pass
+        
+        # Add manually added courses that aren't in Canvas
+        for db_course in db_courses:
+            if not any(c.get('name') == db_course['name'] for c in result):
+                result.append({
+                    'id': None,
+                    'name': db_course['name'],
+                    'reminder_list': db_course['reminder_list'] or '',
+                    'enabled': db_course['enabled']
+                })
+        
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -434,10 +459,19 @@ def sync_assignments():
                 for item in items:
                     should_process, assignment_data = processor.should_process_assignment(item, now)
                     if should_process:
+                        assignment_id = assignment_data['assignment_id']
+                        
+                        # Skip if assignment is permanently deleted (in deleted_assignments)
+                        if db.is_assignment_permanently_deleted(assignment_id):
+                            continue
+                        
+                        # Skip if assignment is deleted (in Recently Deleted)
+                        existing = db.get_assignment(assignment_id)
+                        if existing and existing[12] == 1:  # deleted = 1
+                            continue
+                        
                         new_assignments += 1
                         new_items.append((assignment_data["title"], assignment_data["display_due"]))
-                        
-                        assignment_id = assignment_data['assignment_id']
                         
                         
                         if assignment_id in ai_results:
@@ -625,6 +659,18 @@ def enable_course_mapping():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/course-mapping/delete', methods=['POST'])
+def delete_course_mapping():
+    try:
+        data = request.json
+        course_name = data.get('course_name')
+        if not course_name:
+            return jsonify({'error': 'Missing course_name'}), 400
+        db.permanently_delete_course(course_name)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/course-mapping', methods=['GET'])
 def get_course_mapping():
     try:
@@ -719,6 +765,9 @@ def remove_reminder_from_assignment():
 
         reminders_manager.remove_existing_reminder(title, reminder_list)
         
+        # Mark reminder as not added in database
+        db.update_assignment_fields(assignment_id, reminder_added=0)
+        
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -798,7 +847,7 @@ def update_assignment():
         if not fields_to_update:
             return jsonify({'error': 'No fields to update'}), 400
 
-        allowed_fields = ['status', 'priority', 'user_notes', 'time_estimate', 'suggested_priority', 'ai_confidence', 'ai_confidence_explanation']
+        allowed_fields = ['status', 'priority', 'user_notes', 'time_estimate', 'suggested_priority', 'ai_confidence', 'ai_confidence_explanation', 'reminder_added', 'ai_notes']
         fields_to_update = {k: v for k, v in fields_to_update.items() if k in allowed_fields}
         
         if not fields_to_update:
@@ -851,6 +900,7 @@ def create_assignment():
 
         college_name = db.get_setting('college_name') or ''
         user_notes = data.get('user_notes', '')
+        use_ai = data.get('use_ai', False)
 
         ai_notes = ""
         time_estimate = None
@@ -858,19 +908,15 @@ def create_assignment():
         ai_confidence = None
         ai_confidence_explanation = None
         
-        ai_summary_enabled_setting = db.get_setting("ai_summary_enabled")
-        
-        ai_summary_enabled = ai_summary_enabled_setting != '0'
-        
-        # Initialize AI if needed and generate AI summary first (if enabled)
+        # Generate AI summary if explicitly requested (always call AI, even if description is blank)
         global ai_enhancer
-        if description and description.strip() and ai_summary_enabled:
+        if use_ai:
             if not initialize_components():
                 ai_enhancer = None
             
             if ai_enhancer and ai_enhancer.model:
                 ai_notes, time_estimate, suggested_priority, ai_confidence, ai_confidence_explanation = ai_enhancer.enhance_assignment(
-                    title, description, course_name, college_name
+                    title, description or "", course_name, college_name
                 )
 
         # Save assignment only after AI processing is complete

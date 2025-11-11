@@ -7,65 +7,71 @@
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="header-center">
-                    <h1>StudySync AI</h1>
-                    <p class="subtitle">AI-Powered Assignment Management</p>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>StudySync AI</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <button class="sidebar-item active" data-filter="all" id="sidebarAll">
+                    <span class="sidebar-label">All Classes</span>
+                </button>
+                <div class="sidebar-divider"></div>
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Classes</span>
+                        <button id="addClassBtn" class="sidebar-add-class-btn" title="Add New Class">+</button>
+                    </div>
+                    <div id="sidebarCourses" class="sidebar-courses"></div>
+                </div>
+                <div class="sidebar-divider"></div>
+                <button class="sidebar-item" data-filter="deleted" id="sidebarDeleted">
+                    <span class="sidebar-label">Recently Deleted</span>
+                    <span class="sidebar-badge" id="deletedCount">0</span>
+                </button>
+                <div class="sidebar-divider"></div>
+                <button class="sidebar-item" id="settingsBtn" onclick="openSettings()">
+                    <span class="sidebar-label">Settings</span>
+                </button>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="main-header">
+                <div class="header-left">
+                    <h2 id="currentViewTitle">All Classes</h2>
+                    <div class="header-subtitle">
+                        <span class="assignment-count"><span id="totalAssignments">0</span> assignments</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="syncBtn" class="btn btn-primary">Sync Assignments</button>
+                    <button id="aiInsightsBtn" class="btn btn-primary">AI Insights</button>
+                </div>
+            </header>
+
+            <div id="status" class="status"></div>
+            
+            <div id="syncProgress" class="sync-progress" style="display: none;">
+                <div class="sync-progress-top">
+                    <div id="syncProgressCount" class="sync-progress-count"></div>
+                    <div id="syncProgressTime" class="sync-progress-time"></div>
+                </div>
+                <div class="sync-progress-header">
+                    <div class="sync-spinner"></div>
+                    <span id="syncProgressText">Syncing assignments...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div id="syncProgressBar" class="sync-progress-bar-fill"></div>
                 </div>
             </div>
-        </header>
 
-        <div class="controls">
-            <div class="controls-row">
-                <button id="syncBtn" class="btn btn-primary btn-fixed-width">Sync Assignments</button>
-                <button id="aiInsightsBtn" class="btn btn-primary btn-fixed-width">AI Insights</button>
-            </div>
-            <div class="controls-row controls-row-top">
-                <button id="toggleCompletedBtn" class="btn-icon" title="Completed Assignments">✓</button>
-                <button id="toggleDeletedBtn" class="btn-icon" title="Recently Deleted">🗑️</button>
-                <button id="settingsBtn" class="btn-icon" title="Settings">⚙️</button>
-            </div>
-        </div>
 
-        <div id="status" class="status"></div>
-        
-        <div id="syncProgress" class="sync-progress" style="display: none;">
-            <div class="sync-progress-top">
-                <div id="syncProgressCount" class="sync-progress-count"></div>
-                <div id="syncProgressTime" class="sync-progress-time"></div>
-            </div>
-            <div class="sync-progress-header">
-                <div class="sync-spinner"></div>
-                <span id="syncProgressText">Syncing assignments...</span>
-            </div>
-            <div class="sync-progress-bar">
-                <div id="syncProgressBar" class="sync-progress-bar-fill"></div>
-            </div>
-        </div>
-
-        <div id="bulkActions" class="bulk-actions" style="display: none;">
-            <span id="selectedCount">0 selected</span>
-            <button id="selectAllBtn" class="btn btn-secondary btn-small">Select All</button>
-            <button id="bulkComplete" class="btn btn-secondary">Mark Complete</button>
-            <button id="bulkDelete" class="btn btn-secondary">Delete</button>
-            <button id="bulkAddReminders" class="btn btn-secondary">Add to Reminders</button>
-            <button id="bulkCancel" class="btn btn-secondary">Cancel</button>
-        </div>
-
-        <div class="assignments-header">
-            <div class="assignments-header-left">
-                <span class="assignment-count"><span id="totalAssignments">0</span> assignments</span>
-                <button id="addAssignmentBtn" class="btn btn-primary btn-add-small" title="Add Assignment">+</button>
-            </div>
-            <label class="group-toggle-label">
-                <input type="checkbox" id="groupByCourse">
-                <span>Group by Course</span>
-            </label>
-        </div>
-        <div id="assignmentsList" class="assignments-list"></div>
+            <div id="assignmentsList" class="assignments-list"></div>
+        </main>
     </div>
+
+    <!-- Floating Settings Button -->
 
     <div id="setupModal" class="modal">
         <div class="modal-content">
@@ -89,8 +95,8 @@
             </div>
             
             <div class="form-group" id="setupReminderListsGroup">
-                <label>Reminder List Names for Courses <span class="required">*</span></label>
-                <p class="form-hint">Each course needs a reminder list name. This will be the name of the list in Apple Reminders where assignments for that course will be added. You can change these later in Settings.</p>
+                <label>Courses <span class="required">*</span></label>
+                <p class="form-hint">For each course you want to use, set a reminder list name (required). You can disable courses you don't want to use. Disabled courses can be enabled later in Settings, but you'll need to set a reminder list name first.</p>
                 <div id="setupCoursesList" class="courses-list"></div>
             </div>
             
@@ -158,8 +164,8 @@
                     <ul>
                         <li><strong>Important:</strong> Each course must have a reminder list name set before syncing</li>
                         <li>Click the reminder list name to set or edit it for that specific course</li>
-                        <li>Click the × button to disable a course (assignments won't sync, but existing ones remain)</li>
-                        <li>Click the ✓ button to re-enable a disabled course</li>
+                        <li>Click the Disable button to disable a course (assignments won't sync, but existing ones remain)</li>
+                        <li>Click the Enable button to re-enable a disabled course</li>
                         <li>Disabled courses appear greyed out and won't be synced</li>
                     </ul>
                 </div>
@@ -212,14 +218,6 @@
         </div>
     </div>
 
-    <div id="completedModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeCompletedModal()">&times;</span>
-            <h2>Completed Assignments</h2>
-            <div id="completedAssignmentsList" class="completed-assignments-list"></div>
-        </div>
-    </div>
-
     <div id="deletedModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeDeletedModal()">&times;</span>
@@ -228,57 +226,6 @@
         </div>
     </div>
 
-    <div id="notesModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeNotesModal()">&times;</span>
-            <h2>Assignment Notes</h2>
-            <div id="notesAssignmentTitle" class="notes-title"></div>
-            <div class="form-group">
-                <label for="notesTextarea">Your Notes:</label>
-                <textarea id="notesTextarea" rows="8" class="textarea-full" placeholder="Add your notes, reminders, or thoughts about this assignment..."></textarea>
-            </div>
-            <div class="settings-actions">
-                <button id="saveNotesBtn" class="btn btn-primary">Save Notes</button>
-                <button onclick="closeNotesModal()" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="addAssignmentModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeAddAssignmentModal()">&times;</span>
-            <h2>Add New Assignment</h2>
-            <div class="form-group">
-                <label for="addAssignmentTitle">Title <span class="required">*</span></label>
-                <input type="text" id="addAssignmentTitle" class="form-input" placeholder="Enter assignment title" required>
-            </div>
-            <div class="form-group">
-                <label for="addAssignmentCourse">Course <span class="required">*</span></label>
-                <select id="addAssignmentCourse" class="form-select" required>
-                    <option value="">Select a course</option>
-                </select>
-                <input type="text" id="addAssignmentCourseCustom" class="form-input" placeholder="Enter course name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
-                <input type="text" id="addAssignmentManualReminder" class="form-input" placeholder="Reminder list name" autocomplete="off" spellcheck="false" style="display: none; margin-top: 10px;">
-            </div>
-            <div class="form-group">
-                <label for="addAssignmentDueDate">Due Date <span class="required">*</span></label>
-                <input type="datetime-local" id="addAssignmentDueDate" class="form-input" required>
-            </div>
-            <div class="form-group">
-                <label for="addAssignmentDescription">Description (Optional for AI)</label>
-                <p class="form-hint form-hint-small">If provided, AI will generate a summary, time estimate, and priority suggestion. Leave blank to skip AI summary generation.</p>
-                <textarea id="addAssignmentDescription" rows="5" class="form-input textarea-large" placeholder="Enter assignment description, requirements, or details..."></textarea>
-            </div>
-            <div class="form-group">
-                <label for="addAssignmentNotes">Notes</label>
-                <p class="form-hint form-hint-small">Add your personal notes, reminders, or thoughts about this assignment.</p>
-                <textarea id="addAssignmentNotes" rows="4" class="form-input textarea-large" placeholder="Add your notes here..."></textarea>
-            </div>
-            <div class="settings-actions">
-                <button id="saveAddAssignmentBtn" class="btn btn-primary">Add Assignment</button>
-            </div>
-        </div>
-    </div>
 
     <script src="/app.js?v=4"></script>
 </body>

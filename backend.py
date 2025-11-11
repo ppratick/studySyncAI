@@ -312,6 +312,28 @@ class Database:
         conn.close()
         return result if result else (None, None)
 
+    def get_all_courses_from_db(self):
+        """Get all courses from the database (both Canvas and manually added)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT course_name, reminder_list, enabled FROM courses WHERE enabled = 1')
+        results = cursor.fetchall()
+
+        conn.close()
+        return [{'name': row[0], 'reminder_list': row[1] or '', 'enabled': row[2]} for row in results]
+
+    def permanently_delete_course(self, course_name):
+        """Permanently delete a course from the database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('DELETE FROM courses WHERE course_name = ?', (course_name,))
+
+        conn.commit()
+        conn.close()
+        return True
+
     def save_setting(self, key, value):
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -421,6 +443,17 @@ class Database:
         conn.commit()
         conn.close()
 
+    def is_assignment_permanently_deleted(self, assignment_id):
+        """Check if an assignment is in deleted_assignments (permanently deleted)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT assignment_id FROM deleted_assignments WHERE assignment_id = ?', (assignment_id,))
+        result = cursor.fetchone()
+
+        conn.close()
+        return result is not None
+
     def get_deleted_assignments(self):
         """Get all deleted assignments"""
         conn = self.get_connection()
@@ -449,12 +482,32 @@ class Database:
         conn.close()
 
     def permanently_delete_assignment(self, assignment_id):
-        """Permanently delete assignment from both tables"""
+        """Permanently delete assignment from assignments table, but keep in deleted_assignments to prevent re-sync"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute('DELETE FROM deleted_assignments WHERE assignment_id = ?', (assignment_id,))
+        # Get assignment info before deleting
+        cursor.execute('SELECT title, course_name FROM assignments WHERE assignment_id = ?', (assignment_id,))
+        assignment = cursor.fetchone()
+        
+        # Delete from assignments table
         cursor.execute('DELETE FROM assignments WHERE assignment_id = ?', (assignment_id,))
+        
+        # Keep in deleted_assignments (or add if not already there) to prevent it from being re-added on sync
+        if assignment:
+            cursor.execute('''
+                INSERT OR REPLACE INTO deleted_assignments (assignment_id, title, course_name, deleted_at)
+                VALUES (?, ?, ?, COALESCE((SELECT deleted_at FROM deleted_assignments WHERE assignment_id = ?), CURRENT_TIMESTAMP))
+            ''', (assignment_id, assignment[0], assignment[1], assignment_id))
+        else:
+            # If assignment doesn't exist in assignments table, check if it's in deleted_assignments
+            cursor.execute('SELECT assignment_id FROM deleted_assignments WHERE assignment_id = ?', (assignment_id,))
+            if not cursor.fetchone():
+                # If not in deleted_assignments either, add a placeholder entry
+                cursor.execute('''
+                    INSERT INTO deleted_assignments (assignment_id, title, course_name, deleted_at)
+                    VALUES (?, 'Unknown', 'Unknown', CURRENT_TIMESTAMP)
+                ''', (assignment_id,))
 
         conn.commit()
         conn.close()

@@ -50,7 +50,7 @@
                 </div>
                 <div class="header-actions">
                     <button id="syncBtn" class="btn btn-primary">Sync Assignments</button>
-                    <button id="aiInsightsBtn" class="btn btn-primary">AI Insights</button>
+                    <button id="aiInsightsBtn" class="btn btn-primary">AI Insight</button>
                 </div>
             </header>
 
@@ -114,7 +114,7 @@
                     <input type="checkbox" id="setupAiSummaryEnabled">
                     <span class="checkbox-label-text">Enable AI summaries for assignments</span>
                 </label>
-                <p class="form-hint form-hint-indented">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insights will still work regardless of this setting.</p>
+                <p class="form-hint form-hint-indented">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insight will still work regardless of this setting.</p>
             </div>
 
             <div class="settings-actions">
@@ -150,7 +150,7 @@
                         <input type="checkbox" id="settingsAiSummaryEnabled" checked>
                         <span>Enable AI summaries for assignments</span>
                     </label>
-                    <p class="form-hint">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insights will still work regardless of this setting.</p>
+                    <p class="form-hint">If enabled, AI will generate summaries, time estimates, and priority suggestions for assignments. AI insight will still work regardless of this setting.</p>
                 </div>
             </div>
 
@@ -182,7 +182,7 @@
     <div id="aiInsightsDateModal" class="modal">
         <div class="modal-content modal-content-small">
             <span class="close" onclick="closeAIInsightsDateModal()">&times;</span>
-            <h2>AI Insights</h2>
+            <h2>AI Insight</h2>
             <p class="info-text" style="margin-bottom: 20px;">When would you like feedback until? (e.g., semester end, break, specific date)</p>
             <div class="form-group">
                 <label for="insightsEndDate">End Date <span class="required">*</span></label>
@@ -190,7 +190,7 @@
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeAIInsightsDateModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" id="generateInsightsBtn">Generate Insights</button>
+                <button type="button" class="btn btn-primary" id="generateInsightsBtn">Generate Insight</button>
             </div>
         </div>
     </div>
@@ -199,13 +199,13 @@
         <div class="modal-content modal-content-large">
             <span class="close" onclick="closeAIInsightsModal()">&times;</span>
             <div class="modal-header">
-                <h2>AI Insights</h2>
+                <h2>AI Insight</h2>
                 <button id="refreshInsightsBtn" class="btn btn-secondary btn-small">Refresh</button>
             </div>
             <div id="aiInsightsContent">
                 <div class="loading-content">
                     <div class="sync-spinner spinner-centered"></div>
-                    <p>Generating AI insights...</p>
+                    <p>Generating AI insight...</p>
                 </div>
             </div>
         </div>

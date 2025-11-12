@@ -562,7 +562,7 @@ class AIEnhancer:
         self.ollama_model = ollama_model
         self.ollama_url = "http://localhost:11434/api/generate"
         self.model = self._initialize_model()
-        self.prompts_dir = Path(__file__).parent / "prompts"
+        self.prompts_dir = Path(__file__).parent / "aiPrompts"
         self.assignment_prompt_template = self._load_prompt("assignment_enhancement.txt")
         self.insights_prompt_template = self._load_prompt("comprehensive_insights.txt")
 
@@ -751,12 +751,50 @@ class AIEnhancer:
                 return None
 
             json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
-            if json_match:
-                insights = json.loads(json_match.group())
+            json_str = json_match.group() if json_match else ai_response
+            
+            json_str = json_str.strip()
+            
+            def clean_json_string(s):
+                result = []
+                in_string = False
+                escape_count = 0
+                i = 0
+                while i < len(s):
+                    char = s[i]
+                    if char == '\\':
+                        escape_count += 1
+                        result.append(char)
+                    elif char == '"':
+                        if escape_count % 2 == 0:
+                            in_string = not in_string
+                        result.append(char)
+                        escape_count = 0
+                    elif in_string and ord(char) < 32:
+                        if char == '\n':
+                            result.append('\\n')
+                        elif char == '\r':
+                            result.append('\\r')
+                        elif char == '\t':
+                            result.append('\\t')
+                        else:
+                            pass
+                        escape_count = 0
+                    else:
+                        result.append(char)
+                        escape_count = 0
+                    i += 1
+                return ''.join(result)
+            
+            json_str = clean_json_string(json_str)
+            
+            try:
+                insights = json.loads(json_str)
                 return insights
-            else:
-                insights = json.loads(ai_response)
-                return insights
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                print(f"JSON string (first 500 chars): {json_str[:500]}")
+                return None
 
         except Exception as e:
             print(f"Error generating comprehensive insights: {e}")

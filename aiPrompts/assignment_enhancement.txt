@@ -6,7 +6,7 @@ Assignment: {assignment_title}
 Description: {clean_description}
 
 TASK:
-Estimate realistic workload metrics for this assignment. Assume the student is full-time, balancing 4-5 courses. Be *conservative but practical* in your time estimates and avoid over-optimism.
+Estimate realistic workload metrics for this assignment.
 
 GUIDELINES:
 - Homework or short reflections → 1-3 hours
@@ -25,12 +25,12 @@ Confidence should reflect:
 3. How clearly the requirements are stated
 
 OUTPUT:
-Return *only* the following fields in plain text — no extra commentary or punctuation.
+Return only the following fields in plain text - no extra commentary or punctuation.
 
 Time: <number only, integer hours>
 Priority: High / Medium / Low
 Difficulty: Easy / Medium / Hard
-Notes: <1 short actionable tip, ≤15 words>
+Notes: <Any information the student should know about the assignment, this can be a tip or a summary of the description. 2-3 Sentences Max>
 
 Confidence: <1-5>
 ConfidenceReason: <1 concise sentence explaining uncertainty or confidence>

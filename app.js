@@ -57,7 +57,7 @@ function updateSyncButtonState() {
         reason = 'Adding reminder';
     } else if (isInsightsModalLoading) {
         disabled = true;
-        reason = 'AI insights are generating';
+            reason = 'AI insight is generating';
     } else if (activeAISummaryRequests > 0) {
         disabled = true;
         reason = 'Please wait for AI summary generation to finish';
@@ -215,7 +215,7 @@ function updateAIInsightsButtonState() {
     } else if (isSyncInProgress) {
         disabledReason = 'Please wait for sync to complete';
     } else if (isInsightsModalLoading) {
-        disabledReason = 'AI insights are generating';
+        disabledReason = 'AI insight is generating';
     } else if (isAddAssignmentWorkflow) {
         disabledReason = 'Adding assignment';
     }
@@ -239,7 +239,7 @@ function updateSettingsButtonState() {
         reason = 'Adding reminder';
     } else if (isInsightsModalLoading) {
         disabled = true;
-        reason = 'AI insights are generating';
+            reason = 'AI insight is generating';
     } else if (activeAISummaryRequests > 0) {
         disabled = true;
         reason = 'Please wait for AI summary generation to finish';
@@ -741,7 +741,7 @@ async function syncAssignments() {
     }
 
     if (isInsightsModalLoading) {
-        showStatus('Please wait for AI insights to finish before syncing.', 'info');
+        showStatus('Please wait for AI insight to finish before syncing.', 'info');
         return;
     }
 
@@ -2107,7 +2107,7 @@ function handleReminderButtonClick(e) {
             return false;
         }
         if (isInsightsModalLoading) {
-            showStatus('Please wait for AI insights to finish before adding reminders.', 'info');
+            showStatus('Please wait for AI insight to finish before adding reminders.', 'info');
             return false;
         }
         if (activeAISummaryRequests > 0) {
@@ -2151,7 +2151,7 @@ function handleAISummaryButtonClick(e) {
             return false;
         }
         if (isInsightsModalLoading) {
-            showStatus('Please wait for AI insights to finish before generating summaries.', 'info');
+            showStatus('Please wait for AI insight to finish before generating summaries.', 'info');
             return false;
         }
         if (activeAISummaryRequests > 0) {
@@ -2237,7 +2237,7 @@ async function removeAISummary(assignmentId, buttonElement) {
             return;
         }
         if (isInsightsModalLoading) {
-            showStatus('Please wait for AI insights to finish before removing AI summary.', 'info');
+            showStatus('Please wait for AI insight to finish before removing AI summary.', 'info');
             return;
         }
         if (activeAISummaryRequests > 0) {
@@ -2294,7 +2294,7 @@ async function addReminder(assignmentId, buttonElement) {
             return;
         }
         if (isInsightsModalLoading) {
-            showStatus('Please wait for AI insights to finish before adding reminders.', 'info');
+            showStatus('Please wait for AI insight to finish before adding reminders.', 'info');
             return;
         }
         if (activeAISummaryRequests > 0) {
@@ -2366,7 +2366,7 @@ async function removeReminder(assignmentId, buttonElement) {
             return;
         }
         if (isInsightsModalLoading) {
-            showStatus('Please wait for AI insights to finish before removing reminders.', 'info');
+            showStatus('Please wait for AI insight to finish before removing reminders.', 'info');
             return;
         }
         if (activeAISummaryRequests > 0) {
@@ -2789,7 +2789,7 @@ async function showAIInsights(forceRefresh = false, endDate = null) {
             content.innerHTML = `
                 <div style="text-align: center; padding: 40px;">
                     <div class="sync-spinner" style="margin: 0 auto 20px;"></div>
-                    <p>${forceRefresh ? 'Regenerating' : 'Loading'} AI insights...</p>
+                    <p>${forceRefresh ? 'Regenerating' : 'Loading'} AI insight...</p>
                 </div>
             `;
 
@@ -2855,100 +2855,34 @@ async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refr
             </div>`;
         }
 
-        const getConfidenceStars = (confidence, explanation, textColor = 'var(--text-secondary)') => {
-            if (confidence === null || confidence === undefined) return '';
-            const stars = '★'.repeat(confidence);
-            const emptyStars = '☆'.repeat(5 - confidence);
-            let tooltipText = `AI Confidence: ${confidence}/5`;
-            if (explanation) {
-                tooltipText += `\n\n${escapeHtml(explanation)}`;
-            }
-            return `<span class="ai-confidence" style="display: inline-flex; align-items: center; gap: 4px; color: ${textColor}; font-size: 0.85em; cursor: help;" title="${tooltipText}"><span style="opacity: 0.7;">AI Confidence:</span>${stars}${emptyStars}</span>`;
-        };
-
-        if (insights.summary_report) {
-            const confidenceStars = getConfidenceStars(insights.summary_confidence, insights.summary_confidence_explanation, 'rgba(255, 255, 255, 0.9)');
+        if (insights.insights) {
+            const confidence = insights.confidence;
+            const confidenceExplanation = insights.confidence_explanation;
+            const stars = confidence ? '★'.repeat(confidence) + '☆'.repeat(5 - confidence) : '';
+            const tooltipText = confidence ? `AI Confidence: ${confidence}/5${confidenceExplanation ? '\n\n' + escapeHtml(confidenceExplanation) : ''}` : '';
+            
             html += `
-                <div class="insight-section" style="margin-bottom: 30px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin: 0 0 15px 0;">
-                        <h3 style="margin: 0; color: white;">Quick Overview</h3>${confidenceStars}
-                    </div>
-                    <p style="margin: 0; line-height: 1.6; font-size: 1.05em;">${escapeHtml(insights.summary_report)}</p>
-                </div>
-            `;
-        }
-
-        if (insights.workload_analysis) {
-            const wa = insights.workload_analysis;
-            const confidenceStars = getConfidenceStars(insights.workload_confidence, insights.workload_confidence_explanation);
-            html += `
-                <div class="insight-section" style="margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin: 0 0 15px 0;">
-                        <h3 style="margin: 0; color: var(--primary-color);">Your Workload</h3>${confidenceStars}
-                    </div>
-                    <p style="margin: 10px 0;"><strong>Overall Assessment:</strong> ${escapeHtml(wa.overall_assessment || 'N/A')}</p>
-                    ${wa.total_hours_estimated ? `<p style="margin: 10px 0;"><strong>Total Hours Estimated:</strong> ${wa.total_hours_estimated} hours</p>` : ''}
-                    ${wa.busy_periods && wa.busy_periods.length > 0 ? `<p style="margin: 10px 0;"><strong>Busy Periods:</strong> ${escapeHtml(wa.busy_periods.join(', '))}</p>` : ''}
-                    ${wa.risk_assessment ? `<p style="margin: 10px 0;"><strong>Risk Assessment:</strong> ${escapeHtml(wa.risk_assessment)}</p>` : ''}
-                    ${wa.course_difficulty_comparison ? `
-                        <div style="margin-top: 15px;">
-                            <strong>Course Difficulty:</strong>
-                            <ul style="margin: 10px 0; padding-left: 20px;">
-                                ${Object.entries(wa.course_difficulty_comparison).map(([course, diff]) =>
-                                    `<li>${escapeHtml(course)}: ${escapeHtml(diff)}</li>`
-                                ).join('')}
-                            </ul>
+                <div class="insight-section" style="padding: 30px; background: #ffffff; border-radius: 8px; border: 1px solid #e5e5e7;">
+                    ${confidence ? `
+                        <div style="display: flex; align-items: center; justify-content: flex-end; margin-bottom: 20px;">
+                            <span style="font-size: 0.85em; color: #666; cursor: help;" title="${tooltipText}">
+                                AI Confidence: ${stars}
+                            </span>
                         </div>
                     ` : ''}
+                    <div style="line-height: 1.8; font-size: 1em; color: #1d1d1f; white-space: pre-wrap;">${escapeHtml(insights.insights)}</div>
                 </div>
             `;
-        }
-
-        if (insights.priority_recommendations && insights.priority_recommendations.length > 0) {
-            const confidenceStars = getConfidenceStars(insights.priority_confidence, insights.priority_confidence_explanation);
+        } else if (insights.summary_report) {
             html += `
-                <div class="insight-section" style="margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin: 0 0 15px 0;">
-                        <h3 style="margin: 0; color: var(--primary-color);">Start Here</h3>${confidenceStars}
-                    </div>
-                    ${insights.priority_recommendations.map(rec => `
-                        <div style="margin-bottom: 15px; padding: 15px; background: white; border-radius: 6px; border-left: 4px solid var(--primary-color);">
-                            <strong>${escapeHtml(rec.assignment_title || 'Unknown')}</strong>
-                            ${rec.urgency_level ? `<span style="margin-left: 10px; padding: 2px 8px; background: ${rec.urgency_level === 'High' ? '#ffebee' : rec.urgency_level === 'Medium' ? '#fff3e0' : '#e8f5e9'}; border-radius: 4px; font-size: 0.85em;">${escapeHtml(rec.urgency_level)}</span>` : ''}
-                            ${rec.reason ? `<p style="margin: 8px 0 0 0; color: #666;">${escapeHtml(rec.reason)}</p>` : ''}
-                            ${rec.suggested_start_date ? `<p style="margin: 5px 0 0 0; font-size: 0.9em; color: #888;"><strong>Suggested Start:</strong> ${escapeHtml(rec.suggested_start_date)}</p>` : ''}
-                        </div>
-                    `).join('')}
+                <div class="insight-section" style="padding: 30px; background: #ffffff; border-radius: 8px; border: 1px solid #e5e5e7;">
+                    <div style="line-height: 1.8; font-size: 1em; color: #1d1d1f; white-space: pre-wrap;">${escapeHtml(insights.summary_report)}</div>
                 </div>
             `;
         }
-
-        if (insights.conflict_detection) {
-            const cd = insights.conflict_detection;
-            const confidenceStars = getConfidenceStars(insights.conflict_confidence, insights.conflict_confidence_explanation, '#f57c00');
-            html += `
-                <div class="insight-section" style="margin-bottom: 30px; padding: 20px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin: 0 0 15px 0;">
-                        <h3 style="margin: 0; color: #f57c00;">Watch Out</h3>${confidenceStars}
-                    </div>
-                    ${cd.overlapping_deadlines && cd.overlapping_deadlines.length > 0 ? `
-                        <p style="margin: 10px 0;"><strong>Overlapping Deadlines:</strong></p>
-                        <ul style="margin: 5px 0; padding-left: 20px;">
-                            ${cd.overlapping_deadlines.map(date => `<li>${escapeHtml(date)}</li>`).join('')}
-                        </ul>
-                    ` : ''}
-                    ${cd.scheduling_conflicts ? `<p style="margin: 10px 0;"><strong>Conflicts:</strong> ${escapeHtml(cd.scheduling_conflicts)}</p>` : ''}
-                    ${cd.early_start_recommendations && cd.early_start_recommendations.length > 0 ? `
-                        <p style="margin: 10px 0;"><strong>Start Early:</strong></p>
-                        <ul style="margin: 5px 0; padding-left: 20px;">
-                            ${cd.early_start_recommendations.map(rec => `<li>${escapeHtml(rec)}</li>`).join('')}
-                        </ul>
-                    ` : ''}
-                </div>
-            `;
-        }
-        if (!html) {
-            html = '<p style="text-align: center; padding: 40px; color: #666;">No insights available. Please sync assignments first.</p>';
+        
+        if (!html || (!insights.insights && !insights.summary_report)) {
+            html = '<p style="text-align: center; padding: 40px; color: #666;">No insight available. Please sync assignments first.</p>';
         }
 
         content.innerHTML = html;
@@ -2958,7 +2892,7 @@ async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refr
         refreshPrimaryButtonsState();
 
     } catch (error) {
-        content.innerHTML = `<div style="color: #d32f2f; padding: 20px; text-align: center;">Error loading AI insights: ${escapeHtml(error.message)}</div>`;
+        content.innerHTML = `<div style="color: #d32f2f; padding: 20px; text-align: center;">Error loading AI insight: ${escapeHtml(error.message)}</div>`;
         refreshBtn.disabled = false;
         if (closeBtn) closeBtn.style.display = '';
         isInsightsModalLoading = false;
@@ -2968,7 +2902,7 @@ async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refr
 
 function closeAIInsightsModal() {
     if (isInsightsModalLoading) {
-        showStatus('Please wait for AI insights to finish loading before closing.', 'info');
+        showStatus('Please wait for AI insight to finish loading before closing.', 'info');
         return;
     }
     const modal = document.getElementById('aiInsightsModal');

@@ -2,15 +2,6 @@
 
 A tool to sync Canvas assignments to Apple Reminders with optional AI-powered summaries and insights.
 
-## Features
-
-- Sync Canvas assignments to Apple Reminders
-- AI-generated summaries and time estimates for assignments
-- AI insight generation for workload analysis
-- Web interface for managing assignments
-- CLI tool for quick syncing
-- Course management and filtering
-
 ## Setup
 
 1. Install dependencies:

@@ -6,7 +6,7 @@ A tool to sync Canvas assignments to Apple Reminders with optional AI-powered su
 
 1. Install dependencies:
    ```bash
-   pip install flask requests python-dotenv
+   python3 -m pip install -r requirements.txt
    ```
 
 2. Create a `.env` file with your Canvas credentials:
@@ -20,6 +20,8 @@ A tool to sync Canvas assignments to Apple Reminders with optional AI-powered su
    ```bash
    python3 app.py
    ```
+
+The server accepts loopback connections only. Keep it on `127.0.0.1`; it is not a hosted multi-user service. The browser receives a temporary API token on each page load. Reload the page after restarting the server. Custom local API clients must send that token as `X-StudySync-Token`.
 
 4. Open your browser to `http://127.0.0.1:5001`
 
@@ -37,7 +39,7 @@ python3 cli.py --ai
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - Canvas API token
 - macOS (for Apple Reminders integration)
 - Ollama (optional, for AI features)

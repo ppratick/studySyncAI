@@ -1,3 +1,14 @@
+const localApiToken = document.querySelector('meta[name="studysync-token"]')?.content || '';
+
+function apiFetch(resource, options = {}) {
+    const url = new URL(typeof resource === 'string' ? resource : resource.url, window.location.href);
+    const headers = new Headers(options.headers || (resource instanceof Request ? resource.headers : undefined));
+    if (url.origin === window.location.origin && url.pathname.startsWith('/api/')) {
+        headers.set('X-StudySync-Token', localApiToken);
+    }
+    return window.fetch(resource, { ...options, headers });
+}
+
 /**
  * Frontend JavaScript for StudySync AI.
  * Handles UI interactions, assignment display, syncing, and user interface management.
@@ -177,7 +188,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 async function loadAssignments() {
     try {
-        const response = await fetch('/api/assignments');
+        const response = await apiFetch('/api/assignments');
         const data = await response.json();
         if (data.error) {
             console.error('Error loading assignments:', data.error);
@@ -276,7 +287,7 @@ function updateAssignmentActionButtonsState() {
 
 async function loadCourses() {
     try {
-        const response = await fetch('/api/courses');
+        const response = await apiFetch('/api/courses');
         const data = await response.json();
 
         if (data.error) {
@@ -394,7 +405,7 @@ function updateSidebarActiveState() {
 
 async function updateSidebarCounts() {
     try {
-        const response = await fetch('/api/assignments/deleted');
+        const response = await apiFetch('/api/assignments/deleted');
         const deleted = await response.json();
         const deletedCount = deleted && !deleted.error ? deleted.length : 0;
         const deletedBadge = document.getElementById('deletedCount');
@@ -414,7 +425,7 @@ async function updateSidebarCounts() {
 
 async function loadSettings({ suppressSetupCheck = false } = {}) {
     try {
-        const response = await fetch('/api/settings');
+        const response = await apiFetch('/api/settings');
         const data = await response.json();
 
         if (data.college_name) {
@@ -452,7 +463,7 @@ async function loadSettings({ suppressSetupCheck = false } = {}) {
 
 async function loadCoursesInSettings() {
     try {
-        const response = await fetch('/api/courses');
+        const response = await apiFetch('/api/courses');
         const data = await response.json();
 
         const coursesList = document.getElementById('coursesList');
@@ -678,7 +689,7 @@ async function toggleCourseEnabled(courseName, courseItem, actionButton) {
 
     try {
         const endpoint = newState ? '/api/course-mapping/enable' : '/api/course-mapping/disable';
-        const response = await fetch(endpoint, {
+        const response = await apiFetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -754,7 +765,7 @@ async function checkSetupRequired() {
     }
 
     try {
-        const response = await fetch('/api/courses');
+        const response = await apiFetch('/api/courses');
         const data = await response.json();
 
         if (data.error || !Array.isArray(data)) {
@@ -817,7 +828,7 @@ function showSetupModal(showReminderListsMessage = false, assignmentIdForReminde
         collegeInput.value = '';
     }
 
-    fetch('/api/settings')
+    apiFetch('/api/settings')
         .then(res => res.json())
         .then(data => {
             const autoSyncEnabled = data.auto_sync_reminders === '1' || data.auto_sync_reminders === true;
@@ -850,7 +861,7 @@ function showSetupModal(showReminderListsMessage = false, assignmentIdForReminde
 
 async function loadSetupCourses() {
     try {
-        const response = await fetch('/api/courses');
+        const response = await apiFetch('/api/courses');
         const data = await response.json();
         const coursesList = document.getElementById('setupCoursesList');
 
@@ -1086,7 +1097,7 @@ async function performSync() {
     progressBar.style.backgroundColor = '';
 
     try {
-        const eventSource = new EventSource('/api/sync?ai_enabled=true');
+        const eventSource = new EventSource('/api/sync?ai_enabled=true&token=' + encodeURIComponent(localApiToken));
 
         eventSource.onmessage = async (event) => {
             try {
@@ -1260,7 +1271,7 @@ async function saveAndSync() {
 
     warningDiv.style.display = 'none';
     try {
-        const settingsResponse = await fetch('/api/settings', {
+        const settingsResponse = await apiFetch('/api/settings', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1281,7 +1292,7 @@ async function saveAndSync() {
         collegeName = newCollegeName;
 
         for (const course of coursesToUpdate) {
-            await fetch('/api/course-mapping', {
+            await apiFetch('/api/course-mapping', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1293,13 +1304,13 @@ async function saveAndSync() {
             });
 
             if (course.enabled) {
-                await fetch('/api/course-mapping/enable', {
+                await apiFetch('/api/course-mapping/enable', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ course_name: course.course_name })
                 });
             } else {
-                await fetch('/api/course-mapping/disable', {
+                await apiFetch('/api/course-mapping/disable', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ course_name: course.course_name })
@@ -1311,7 +1322,7 @@ async function saveAndSync() {
 
             const alreadyHandled = coursesToUpdate.some(c => c.course_name === courseName);
             if (!alreadyHandled) {
-                await fetch('/api/course-mapping/disable', {
+                await apiFetch('/api/course-mapping/disable', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ course_name: courseName })
@@ -1370,7 +1381,7 @@ async function saveSettings() {
     const aiSummaryCheckbox = document.getElementById('settingsAiSummaryEnabled');
     const aiSummaryEnabled = aiSummaryCheckbox ? aiSummaryCheckbox.checked : true;
     try {
-        const response = await fetch('/api/settings', {
+        const response = await apiFetch('/api/settings', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1389,7 +1400,7 @@ async function saveSettings() {
             for (const [courseName, enabled] of Object.entries(courseEnableDisableChanges)) {
                 try {
                     const endpoint = enabled ? '/api/course-mapping/enable' : '/api/course-mapping/disable';
-                    await fetch(endpoint, {
+                    await apiFetch(endpoint, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1405,7 +1416,7 @@ async function saveSettings() {
 
             for (const [courseName, reminderList] of Object.entries(reminderListChanges)) {
                 try {
-                    await fetch('/api/course-mapping', {
+                    await apiFetch('/api/course-mapping', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1499,7 +1510,7 @@ async function editManualCourseName(courseName, currentName) {
     try {
         if (trimmed === courseName) {
 
-            const response = await fetch('/api/course-mapping', {
+            const response = await apiFetch('/api/course-mapping', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1527,7 +1538,7 @@ async function editManualCourseName(courseName, currentName) {
             }
         } else {
 
-            const response = await fetch('/api/course-mapping', {
+            const response = await apiFetch('/api/course-mapping', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1542,13 +1553,13 @@ async function editManualCourseName(courseName, currentName) {
             if (data.success) {
 
                 try {
-                    const assignmentsResp = await fetch('/api/assignments');
+                    const assignmentsResp = await apiFetch('/api/assignments');
                     const assignmentsData = await assignmentsResp.json();
                     if (Array.isArray(assignmentsData)) {
                         const assignmentsToUpdate = assignmentsData.filter(a => a && a.course_name === courseName);
                         if (assignmentsToUpdate.length > 0) {
                             const ids = assignmentsToUpdate.map(a => a.assignment_id);
-                            await fetch('/api/assignments/bulk-update', {
+                            await apiFetch('/api/assignments/bulk-update', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -1564,7 +1575,7 @@ async function editManualCourseName(courseName, currentName) {
                 } catch (_) {}
 
                 try {
-                    await fetch('/api/course-mapping/delete', {
+                    await apiFetch('/api/course-mapping/delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ course_name: courseName })
@@ -1591,7 +1602,7 @@ async function deleteManualCourse(courseName) {
     }
 
     try {
-        const response = await fetch('/api/course-mapping/delete', {
+        const response = await apiFetch('/api/course-mapping/delete', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1603,12 +1614,12 @@ async function deleteManualCourse(courseName) {
         if (data.success) {
 
             try {
-                const assignmentsResp = await fetch('/api/assignments');
+                const assignmentsResp = await apiFetch('/api/assignments');
                 const assignmentsData = await assignmentsResp.json();
                 if (Array.isArray(assignmentsData)) {
                     const assignmentsToDelete = assignmentsData.filter(a => a && a.course_name === courseName);
                     for (const assignment of assignmentsToDelete) {
-                        await fetch('/api/assignments/permanently-delete', {
+                        await apiFetch('/api/assignments/permanently-delete', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ assignment_id: assignment.assignment_id })
@@ -1652,7 +1663,7 @@ async function editReminderList(courseName, currentReminderList) {
     }
 
     try {
-        const response = await fetch('/api/course-mapping', {
+        const response = await apiFetch('/api/course-mapping', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1705,7 +1716,7 @@ async function bulkUpdateReminderListForCourse(courseName, newReminderList) {
     if (!ids || ids.length === 0) {
         return;
     }
-    const res = await fetch('/api/assignments/bulk-update', {
+    const res = await apiFetch('/api/assignments/bulk-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignment_ids: ids, fields: { reminder_list: newReminderList } })
@@ -1751,7 +1762,7 @@ async function closeModal() {
 
         if (newCollegeName) {
             try {
-                await fetch('/api/settings', {
+                await apiFetch('/api/settings', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1809,7 +1820,7 @@ function displayAssignments(assignmentsToShow) {
                 : currentFilterCourse;
             const safeFormId = currentFilterCourse.replace(/[^a-zA-Z0-9_-]/g, '_');
             container.innerHTML = `
-                <div class="add-assignment-hint" ondblclick="showInlineAssignmentForm('${escapeHtml(currentFilterCourse)}', '${escapeHtml(displayCourseName)}')" onclick="showInlineAssignmentForm('${escapeHtml(currentFilterCourse)}', '${escapeHtml(displayCourseName)}')" title="Double-click or click to add assignment">
+                <div class="add-assignment-hint" ondblclick="showInlineAssignmentForm(${inlineArg(currentFilterCourse)}, ${inlineArg(displayCourseName)})" onclick="showInlineAssignmentForm(${inlineArg(currentFilterCourse)}, ${inlineArg(displayCourseName)})" title="Double-click or click to add assignment">
                     <span class="add-assignment-icon">+</span>
                     <span class="add-assignment-text">Add assignment</span>
                 </div>
@@ -1875,7 +1886,7 @@ function displayAssignments(assignmentsToShow) {
                     <div class="course-group-header">${escapeHtml(courseName)}</div>
                     <div class="course-group-assignments">
                         ${courseData.assignments.map(assignment => createAssignmentCard(assignment)).join('')}
-                        <div class="add-assignment-hint" ondblclick="showInlineAssignmentForm('${escapeHtml(officialCourseName)}', '${escapeHtml(courseName)}')" onclick="showInlineAssignmentForm('${escapeHtml(officialCourseName)}', '${escapeHtml(courseName)}')" title="Double-click or click to add assignment">
+                        <div class="add-assignment-hint" ondblclick="showInlineAssignmentForm(${inlineArg(officialCourseName)}, ${inlineArg(courseName)})" onclick="showInlineAssignmentForm(${inlineArg(officialCourseName)}, ${inlineArg(courseName)})" title="Double-click or click to add assignment">
                             <span class="add-assignment-icon">+</span>
                             <span class="add-assignment-text">Add assignment</span>
                         </div>
@@ -1903,7 +1914,7 @@ function displayAssignments(assignmentsToShow) {
                         : allAssignments[0].course_name)
                     : currentFilterCourse;
                 const safeFormId = currentFilterCourse.replace(/[^a-zA-Z0-9_-]/g, '_');
-                html += `<div class="add-assignment-hint" ondblclick="showInlineAssignmentForm('${escapeHtml(currentFilterCourse)}', '${escapeHtml(displayCourseName)}')" onclick="showInlineAssignmentForm('${escapeHtml(currentFilterCourse)}', '${escapeHtml(displayCourseName)}')" title="Double-click or click to add assignment">
+                html += `<div class="add-assignment-hint" ondblclick="showInlineAssignmentForm(${inlineArg(currentFilterCourse)}, ${inlineArg(displayCourseName)})" onclick="showInlineAssignmentForm(${inlineArg(currentFilterCourse)}, ${inlineArg(displayCourseName)})" title="Double-click or click to add assignment">
                     <span class="add-assignment-icon">+</span>
                     <span class="add-assignment-text">Add assignment</span>
                 </div>`;
@@ -1924,9 +1935,7 @@ function displayAssignments(assignmentsToShow) {
 function createAssignmentCard(assignment) {
     let title = assignment.title || '';
     if (title) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = title;
-        title = tmp.textContent || tmp.innerText || '';
+        title = plainText(title);
     }
 
     if (!title.trim()) {
@@ -1956,9 +1965,7 @@ function createAssignmentCard(assignment) {
 
     let aiNotes = '';
     if (assignment.ai_notes && assignment.ai_notes.trim()) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = assignment.ai_notes;
-        aiNotes = tmp.textContent || tmp.innerText || '';
+        aiNotes = plainText(assignment.ai_notes);
     }
 
     const aiConfidence = assignment.ai_confidence || null;
@@ -1967,9 +1974,9 @@ function createAssignmentCard(assignment) {
     if (aiConfidence !== null && aiConfidence !== undefined) {
         let tooltipText = `AI Confidence: ${aiConfidence}/5`;
         if (aiConfidenceExplanation) {
-            tooltipText += `\n\n${escapeHtml(aiConfidenceExplanation)}`;
+            tooltipText += `\n\n${aiConfidenceExplanation}`;
         }
-        confidenceStars = `<span class="ai-confidence" style="display: inline-flex; align-items: center; gap: 4px; margin-left: 12px; color: var(--text-secondary); font-size: 0.85em; cursor: help;" title="${tooltipText}"><span style="opacity: 0.7;">AI Confidence:</span><span style="font-weight: 600;">${aiConfidence}/5</span></span>`;
+        confidenceStars = `<span class="ai-confidence" style="display: inline-flex; align-items: center; gap: 4px; margin-left: 12px; color: var(--text-secondary); font-size: 0.85em; cursor: help;" title="${escapeHtml(tooltipText)}"><span style="opacity: 0.7;">AI Confidence:</span><span style="font-weight: 600;">${escapeHtml(aiConfidence)}/5</span></span>`;
     }
 
     const aiNotesSection = aiNotes ?
@@ -1984,14 +1991,14 @@ function createAssignmentCard(assignment) {
 
     return `
         <div class="assignment-card" data-assignment-id="${escapeHtml(assignment.assignment_id)}"
-             oncontextmenu="event.preventDefault(); showContextMenu(event, '${escapeHtml(assignment.assignment_id)}')"
+             oncontextmenu="event.preventDefault(); showContextMenu(event, ${inlineArg(assignment.assignment_id)})"
              tabindex="0"
-             onfocus="focusedAssignmentId = '${escapeHtml(assignment.assignment_id)}'"
+             onfocus="focusedAssignmentId = ${inlineArg(assignment.assignment_id)}"
              onblur="focusedAssignmentId = null">
             <div style="display: flex; align-items: flex-start; gap: 12px;">
                 <div style="display: flex; align-items: center; padding-top: 2px;">
                     <input type="checkbox" class="assignment-checkbox" ${assignment.deleted ? 'checked' : ''}
-                           onchange="event.stopPropagation(); toggleAssignmentDeleted('${escapeHtml(assignment.assignment_id)}', this.checked)">
+                           onchange="event.stopPropagation(); toggleAssignmentDeleted(${inlineArg(assignment.assignment_id)}, this.checked)">
                 </div>
                 <div style="flex: 1; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-width: 0;">
                     <div style="flex: 1; min-width: 0;">
@@ -1999,11 +2006,11 @@ function createAssignmentCard(assignment) {
                         <div class="assignment-due" style="margin-top: 4px;">${escapeHtml(formattedDate)}</div>
                         ${assignment.deleted ? `
                             <div class="assignment-meta" style="margin-top: 8px;">
-                                <button type="button" onclick="restoreAssignment('${escapeHtml(assignment.assignment_id)}')"
+                                <button type="button" onclick="restoreAssignment(${inlineArg(assignment.assignment_id)})"
                                         style="background: none; border: none; color: #4caf50; cursor: pointer; font-size: 0.9em; padding: 2px 6px; opacity: 0.7; transition: opacity 0.2s;"
                                         onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'"
                                         title="Restore assignment">Restore</button>
-                                <button type="button" onclick="permanentlyDeleteAssignment('${escapeHtml(assignment.assignment_id)}')"
+                                <button type="button" onclick="permanentlyDeleteAssignment(${inlineArg(assignment.assignment_id)})"
                                         style="background: none; border: none; color: #d32f2f; cursor: pointer; font-size: 0.9em; padding: 2px 6px; opacity: 0.7; transition: opacity 0.2s;"
                                         onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'"
                                         title="Delete forever">Delete Forever</button>
@@ -2189,7 +2196,7 @@ async function generateAISummary(assignmentId, buttonElement) {
             buttonElement.textContent = 'Generating...';
         }
 
-        const response = await fetch('/api/assignments/generate-ai-summary', {
+        const response = await apiFetch('/api/assignments/generate-ai-summary', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2261,7 +2268,7 @@ async function removeAISummary(assignmentId, buttonElement) {
         buttonElement.disabled = true;
         buttonElement.textContent = 'Removing...';
 
-        await fetch('/api/assignments/update', {
+        await apiFetch('/api/assignments/update', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2332,7 +2339,7 @@ async function addReminder(assignmentId, buttonElement) {
         buttonElement.disabled = true;
         buttonElement.textContent = 'Adding...';
 
-        const response = await fetch('/api/assignments/add-reminder', {
+        const response = await apiFetch('/api/assignments/add-reminder', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2405,7 +2412,7 @@ async function removeReminder(assignmentId, buttonElement) {
         buttonElement.disabled = true;
         buttonElement.textContent = 'Removing...';
 
-        const response = await fetch('/api/assignments/remove-reminder', {
+        const response = await apiFetch('/api/assignments/remove-reminder', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2436,7 +2443,7 @@ async function updateStats(assignmentsToCount = null) {
     let total;
     if (currentFilter === 'deleted') {
         try {
-            const response = await fetch('/api/assignments/deleted');
+            const response = await apiFetch('/api/assignments/deleted');
             const deleted = await response.json();
             total = deleted && !deleted.error ? deleted.length : 0;
         } catch (error) {
@@ -2471,15 +2478,23 @@ function showStatus(message, type) {
 }
 
 function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Encode for both nested contexts: JavaScript string, then HTML attribute.
+function inlineArg(value) {
+    return escapeHtml(JSON.stringify(String(value ?? '')));
+}
+
+function plainText(value) {
+    // Parsed in an inert document; untrusted HTML is never inserted into the page.
+    return new DOMParser().parseFromString(String(value ?? ''), 'text/html').body.textContent || '';
 }
 
 async function loadDeletedAssignments() {
     try {
-        const response = await fetch('/api/assignments/deleted');
+        const response = await apiFetch('/api/assignments/deleted');
         const data = await response.json();
         if (data.error) {
             console.error('Error loading deleted assignments:', data.error);
@@ -2521,8 +2536,8 @@ async function displayDeletedAssignmentsInMainView() {
                     </div>
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    ${classRemoved ? '' : `<button class="btn btn-secondary" onclick="restoreAssignment('${escapeHtml(item.assignment_id)}')" style="font-size: 0.85em; padding: 6px 12px;">Restore</button>`}
-                    <button class="btn btn-secondary" onclick="permanentlyDeleteAssignment('${escapeHtml(item.assignment_id)}')" style="font-size: 0.85em; padding: 6px 12px; background: #d32f2f; color: #ffffff;">Delete Forever</button>
+                    ${classRemoved ? '' : `<button class="btn btn-secondary" onclick="restoreAssignment(${inlineArg(item.assignment_id)})" style="font-size: 0.85em; padding: 6px 12px;">Restore</button>`}
+                    <button class="btn btn-secondary" onclick="permanentlyDeleteAssignment(${inlineArg(item.assignment_id)})" style="font-size: 0.85em; padding: 6px 12px; background: #d32f2f; color: #ffffff;">Delete Forever</button>
                 </div>
             </div>
         `;
@@ -2553,7 +2568,7 @@ async function restoreAssignment(assignmentId) {
             }
         }
 
-        const response = await fetch('/api/assignments/restore', {
+        const response = await apiFetch('/api/assignments/restore', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ assignment_id: assignmentId })
@@ -2581,7 +2596,7 @@ async function permanentlyDeleteAssignment(assignmentId) {
     }
 
     try {
-        const response = await fetch('/api/assignments/permanently-delete', {
+        const response = await apiFetch('/api/assignments/permanently-delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ assignment_id: assignmentId })
@@ -2605,7 +2620,7 @@ async function permanentlyDeleteAssignment(assignmentId) {
 
 async function deleteAssignment(assignmentId) {
     try {
-        const response = await fetch('/api/assignments/delete', {
+        const response = await apiFetch('/api/assignments/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ assignment_id: assignmentId })
@@ -2655,7 +2670,7 @@ function showContextMenu(e, assignmentId) {
     menu.style.top = e.pageY + 'px';
     menu.style.zIndex = '10000';
     menu.innerHTML = `
-        <button class="context-menu-item" onclick="deleteAssignment('${escapeHtml(assignmentId)}'); document.getElementById('contextMenu')?.remove();">
+        <button class="context-menu-item" onclick="deleteAssignment(${inlineArg(assignmentId)}); document.getElementById('contextMenu')?.remove();">
             Delete
         </button>
     `;
@@ -2690,7 +2705,7 @@ let isRefreshingInsights = false;
 
 async function checkInsightsExist() {
     try {
-        const response = await fetch('/api/ai-insights/check');
+        const response = await apiFetch('/api/ai-insights/check');
         const data = await response.json();
         if (data.exists) {
             insightsExist = true;
@@ -2810,7 +2825,7 @@ async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refr
         const url = forceRefresh
             ? `/api/ai-insights?refresh=true&end_date=${targetEndDate}`
             : `/api/ai-insights?end_date=${targetEndDate}`;
-        const response = await fetch(url);
+        const response = await apiFetch(url);
         const data = await response.json();
 
         if (data.error) {
@@ -2858,14 +2873,15 @@ async function loadAIInsightsContent(forceRefresh, endDate, modal, content, refr
         if (insights.insights) {
             const confidence = insights.confidence;
             const confidenceExplanation = insights.confidence_explanation;
-            const stars = confidence ? '★'.repeat(confidence) + '☆'.repeat(5 - confidence) : '';
-            const tooltipText = confidence ? `AI Confidence: ${confidence}/5${confidenceExplanation ? '\n\n' + escapeHtml(confidenceExplanation) : ''}` : '';
+            const rating = Math.max(0, Math.min(5, Math.trunc(Number(confidence) || 0)));
+            const stars = rating ? '★'.repeat(rating) + '☆'.repeat(5 - rating) : '';
+            const tooltipText = confidence ? `AI Confidence: ${confidence}/5${confidenceExplanation ? '\n\n' + confidenceExplanation : ''}` : '';
             
             html += `
                 <div class="insight-section" style="padding: 30px; background: #ffffff; border-radius: 8px; border: 1px solid #e5e5e7;">
                     ${confidence ? `
                         <div style="display: flex; align-items: center; justify-content: flex-end; margin-bottom: 20px;">
-                            <span style="font-size: 0.85em; color: #666; cursor: help;" title="${tooltipText}">
+                            <span style="font-size: 0.85em; color: #666; cursor: help;" title="${escapeHtml(tooltipText)}">
                                 AI Confidence: ${stars}
                             </span>
                         </div>
@@ -2917,7 +2933,7 @@ function closeAssignmentDetailsModal() {
 
 async function updateAssignmentField(assignmentId, field, value) {
     try {
-        const response = await fetch('/api/assignments/update', {
+        const response = await apiFetch('/api/assignments/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ assignment_id: assignmentId, [field]: value })
@@ -2963,7 +2979,7 @@ async function openAddClassModal() {
 
     try {
 
-        const response = await fetch('/api/course-mapping', {
+        const response = await apiFetch('/api/course-mapping', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3010,7 +3026,7 @@ function showInlineAssignmentForm(courseName, displayCourseName) {
         if (assignmentsList) {
             assignmentsList.appendChild(formContainer);
         } else {
-            const courseSection = document.querySelector(`[data-course-name="${courseName}"]`);
+            const courseSection = document.querySelector(`[data-course-name="${CSS.escape(String(courseName))}"]`);
             if (courseSection) {
                 const assignmentsDiv = courseSection.querySelector('.course-group-assignments');
                 if (assignmentsDiv) {
@@ -3020,35 +3036,34 @@ function showInlineAssignmentForm(courseName, displayCourseName) {
         }
     }
 
-    const escapedCourseName = courseName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    const escapedDisplayName = displayCourseName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const safeCourseId = courseName.replace(/[^a-zA-Z0-9_-]/g, '_');
 
     formContainer.innerHTML = `
         <div class="inline-assignment-form-content">
             <div class="inline-form-group">
                 <label>Title <span class="required">*</span></label>
-                <input type="text" class="inline-form-input" id="inline-title-${escapedCourseName.replace(/[^a-zA-Z0-9_-]/g, '_')}" placeholder="Enter assignment title" required>
+                <input type="text" class="inline-form-input" id="inline-title-${safeCourseId}" placeholder="Enter assignment title" required>
             </div>
             <div class="inline-form-group">
                 <label>Due Date & Time <span class="required">*</span></label>
-                <input type="datetime-local" class="inline-form-input" id="inline-due-${escapedCourseName.replace(/[^a-zA-Z0-9_-]/g, '_')}" required>
+                <input type="datetime-local" class="inline-form-input" id="inline-due-${safeCourseId}" required>
             </div>
             <div class="inline-form-group">
                 <label>Description (optional, for AI)</label>
-                <textarea class="inline-form-textarea" id="inline-desc-${escapedCourseName.replace(/[^a-zA-Z0-9_-]/g, '_')}" rows="3" placeholder="Enter assignment description, requirements, or details..."></textarea>
+                <textarea class="inline-form-textarea" id="inline-desc-${safeCourseId}" rows="3" placeholder="Enter assignment description, requirements, or details..."></textarea>
             </div>
             <div class="inline-form-actions">
                 <div class="inline-form-actions-primary">
-                    <button class="btn btn-primary" onclick="saveInlineAssignment('${escapedCourseName}', '${escapedDisplayName}', true)">Add Assignment with AI Summary</button>
-                    <button class="btn btn-secondary" onclick="saveInlineAssignment('${escapedCourseName}', '${escapedDisplayName}', false)">Add Assignment</button>
+                    <button class="btn btn-primary" onclick="saveInlineAssignment(${inlineArg(courseName)}, ${inlineArg(displayCourseName)}, true)">Add Assignment with AI Summary</button>
+                    <button class="btn btn-secondary" onclick="saveInlineAssignment(${inlineArg(courseName)}, ${inlineArg(displayCourseName)}, false)">Add Assignment</button>
                 </div>
-                <button class="btn btn-link" onclick="hideInlineAssignmentForm('${escapedCourseName}')">Cancel</button>
+                <button class="btn btn-link" onclick="hideInlineAssignmentForm(${inlineArg(courseName)})">Cancel</button>
             </div>
         </div>
     `;
 
     formContainer.style.display = 'block';
-    const titleInput = document.getElementById(`inline-title-${escapedCourseName.replace(/[^a-zA-Z0-9_-]/g, '_')}`);
+    const titleInput = document.getElementById(`inline-title-${safeCourseId}`);
     if (titleInput) titleInput.focus();
 }
 
@@ -3132,7 +3147,7 @@ async function saveInlineAssignment(courseName, displayCourseName, useAI = false
         const dueAtISO = dueDateObj.toISOString().replace(/\.\d{3}Z$/, 'Z');
         const assignmentId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        const response = await fetch('/api/assignments/create', {
+        const response = await apiFetch('/api/assignments/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

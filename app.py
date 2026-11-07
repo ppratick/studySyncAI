@@ -9,6 +9,9 @@ import requests
 import sqlite3
 import time
 import traceback
+import secrets
+from ipaddress import ip_address
+from urllib.parse import urlsplit
 from datetime import datetime
 from zoneinfo import ZoneInfo
 EST = ZoneInfo("America/New_York")
@@ -20,7 +23,48 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 
-app = Flask(__name__, template_folder='.', static_folder='.')
+app = Flask(__name__, template_folder='.', static_folder=None)
+app.config.update(
+    TRUSTED_HOSTS=["localhost", "127.0.0.1"],
+    LOCAL_API_TOKEN=secrets.token_urlsafe(32),
+    MAX_CONTENT_LENGTH=2 * 1024 * 1024,
+)
+
+@app.before_request
+def protect_local_app():
+    # This app controls local Reminders and must never accept remote clients.
+    try:
+        if not ip_address(request.remote_addr or "").is_loopback:
+            return jsonify(error="Local access only"), 403
+    except ValueError:
+        return jsonify(error="Local access only"), 403
+    if request.headers.get("Sec-Fetch-Site") == "cross-site":
+        return jsonify(error="Cross-site requests are not allowed"), 403
+    origin = request.headers.get("Origin")
+    if origin:
+        try:
+            supplied = urlsplit(origin)
+            expected = urlsplit(request.host_url)
+            if (supplied.scheme, supplied.netloc) != (expected.scheme, expected.netloc):
+                return jsonify(error="Invalid request origin"), 403
+        except ValueError:
+            return jsonify(error="Invalid request origin"), 403
+    if request.path.startswith("/api/"):
+        token = request.headers.get("X-StudySync-Token", "")
+        # EventSource cannot send custom headers. Restrict query tokens to SSE.
+        if request.path == "/api/sync" and not token:
+            token = request.args.get("token", "")
+        if not secrets.compare_digest(token.encode(), app.config["LOCAL_API_TOKEN"].encode()):
+            return jsonify(error="Reload StudySyncAI before making this request"), 403
+
+@app.after_request
+def security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    if request.path == "/" or request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 db_path = str(Path(__file__).parent / "studysync.db")
 db = Database(db_path=db_path)
@@ -59,7 +103,7 @@ def get_due_date(item):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', csrf_token=app.config['LOCAL_API_TOKEN'])
 
 @app.route('/style.css')
 def style_css():
@@ -1010,4 +1054,4 @@ def get_ai_insights():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(host="127.0.0.1", debug=False, port=5001)

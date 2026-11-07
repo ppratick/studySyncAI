@@ -802,42 +802,52 @@ class AIEnhancer:
 
 class RemindersManager:
     @staticmethod
-    def run_applescript(script):
-        subprocess.run(["osascript", "-e", script])
+    def run_applescript(script, arguments=()):
+        subprocess.run(["osascript", "-e", script, "--", *arguments], check=True, timeout=30)
 
     @staticmethod
     def add_reminder(title, due_str, list_name, notes=""):
-        escaped_notes = notes.replace('"', '\\"')
-        script = f'''
-        tell application "Reminders"
-            try
-                set targetList to list "{list_name}"
-            on error
-                set targetList to make new list with properties {{name:"{list_name}"}}
-            end try
-            set newReminder to make new reminder in targetList
-            set name of newReminder to "{title}"
-            set due date of newReminder to date "{due_str}"
-            set body of newReminder to "{escaped_notes}"
-        end tell
+        # Pass external text as argv, never as executable AppleScript source.
+        script = '''
+        on run argv
+            set reminderTitle to item 1 of argv
+            set dueText to item 2 of argv
+            set listName to item 3 of argv
+            set reminderNotes to item 4 of argv
+            tell application "Reminders"
+                try
+                    set targetList to list listName
+                on error
+                    set targetList to make new list with properties {name:listName}
+                end try
+                set newReminder to make new reminder in targetList
+                set name of newReminder to reminderTitle
+                set due date of newReminder to date dueText
+                set body of newReminder to reminderNotes
+            end tell
+        end run
         '''
-        RemindersManager.run_applescript(script)
+        RemindersManager.run_applescript(script, [str(title), str(due_str), str(list_name), str(notes)])
 
     @staticmethod
     def remove_existing_reminder(title, list_name):
-        script = f'''
-        tell application "Reminders"
-            try
-                set targetList to list "{list_name}"
-                set matchingReminders to every reminder in targetList whose name is "{title}"
-                repeat with r in matchingReminders
-                    set completed of r to true
-                end repeat
-            on error
-            end try
-        end tell
+        script = '''
+        on run argv
+            set reminderTitle to item 1 of argv
+            set listName to item 2 of argv
+            tell application "Reminders"
+                try
+                    set targetList to list listName
+                    set matchingReminders to every reminder in targetList whose name is reminderTitle
+                    repeat with r in matchingReminders
+                        set completed of r to true
+                    end repeat
+                on error
+                end try
+            end tell
+        end run
         '''
-        RemindersManager.run_applescript(script)
+        RemindersManager.run_applescript(script, [str(title), str(list_name)])
 
 class CanvasAPI:
     def __init__(self, api_token, canvas_domain):

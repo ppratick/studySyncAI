@@ -19,6 +19,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 cp .env.example .env
+chmod 600 .env
 ```
 
 Edit the ignored `.env` file:

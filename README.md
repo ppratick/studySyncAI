@@ -1,46 +1,71 @@
 # StudySync AI
 
-A tool to sync Canvas assignments to Apple Reminders with optional AI-powered summaries and insights.
+A local macOS tool that brings Canvas assignments into Apple Reminders, with a browser dashboard and optional AI summaries through a local Ollama model.
 
-## Setup
-
-1. Install dependencies:
-   ```bash
-   python3 -m pip install -r requirements.txt
-   ```
-
-2. Create a `.env` file with your Canvas credentials:
-   ```
-   CANVAS_API_TOKEN=your_canvas_api_token
-   CANVAS_DOMAIN=your_canvas_domain
-   OLLAMA_MODEL=your_ollama_model (optional, for AI features)
-   ```
-
-3. Run the web application:
-   ```bash
-   python3 app.py
-   ```
-
-The server accepts loopback connections only. Keep it on `127.0.0.1`; it is not a hosted multi-user service. The browser receives a temporary API token on each page load. Reload the page after restarting the server. Custom local API clients must send that token as `X-StudySync-Token`.
-
-4. Open your browser to `http://127.0.0.1:5001`
-
-## CLI Usage
-
-Sync assignments to Apple Reminders:
-```bash
-python3 cli.py
-```
-
-With AI summaries:
-```bash
-python3 cli.py --ai
-```
+The project is free and open source. Use your own Canvas account. Assignment data stays in a local SQLite database; Canvas requests go to your configured school, and AI requests go to your local Ollama service.
 
 ## Requirements
 
-- Python 3.10+
-- Canvas API token
-- macOS (for Apple Reminders integration)
-- Ollama (optional, for AI features)
+- macOS with Apple Reminders, Python 3.10 or newer, and a Canvas personal access token.
+- For the current web application: Ollama running locally and a downloaded model selected in `.env`.
+- The command-line sync works without Ollama when `--ai` is omitted.
 
+## Setup
+
+```sh
+git clone https://github.com/ppratick/studySyncAI.git
+cd studySyncAI
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+cp .env.example .env
+```
+
+Edit the ignored `.env` file:
+
+- `CANVAS_API_TOKEN`: your own Canvas personal access token, created in Canvas account settings.
+- `CANVAS_DOMAIN`: your school's hostname, such as `canvas.example.edu`; omit `https://` and `/api/v1`.
+- `OLLAMA_MODEL`: the exact name of a model installed in your local Ollama.
+
+Favorite the courses you want to sync in Canvas. Start Ollama and download your chosen model before using AI features. The current web initialization requires `OLLAMA_MODEL` even if you later disable summaries in the interface.
+
+## Browser dashboard
+
+```sh
+python3 app.py
+```
+
+Open **http://127.0.0.1:5001**. Configure your course-to-Reminders-list mappings and sync options in the dashboard. macOS may ask permission for the process running Python to control Reminders.
+
+The server accepts loopback connections only. Keep it bound to `127.0.0.1`; it is a personal local application. The browser gets a temporary API token on each page load, so reload after restarting the server. Custom local clients must send that token as `X-StudySync-Token`.
+
+## Command-line sync
+
+```sh
+python3 cli.py
+```
+
+On first use, choose Reminders list names for your favorite courses. To request AI summaries:
+
+```sh
+python3 cli.py --ai
+```
+
+Review imported reminders and AI summaries for accuracy. Local sync writes to your Reminders lists.
+
+## Privacy
+
+`.env` contains your Canvas credential. `studysync.db` contains your coursework, settings, and notes. Both are ignored by Git and must stay out of screenshots, bug reports, shared folders, and installers. A downloaded copy of the source creates its own database; never distribute your personal one.
+
+## Security checks
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p test_security.py
+node tests/test_security.js
+```
+
+The Python tests use a temporary database and dummy credentials. The JavaScript checks require Node.js and no extra packages.
+
+## License
+
+[MIT](LICENSE). Canvas access remains subject to your school's policies; optional tools and services have their own terms.

@@ -4,6 +4,11 @@ A local macOS tool that brings Canvas assignments into Apple Reminders, with a b
 
 The project is free and open source. Use your own Canvas account. Assignment data stays in a local SQLite database; Canvas requests go to your configured school, and AI requests go to your local Ollama service.
 
+<p align="center">
+  <img src="docs/images/dashboard.png" width="800" alt="StudySync AI dashboard with sample courses, assignments, and AI summaries">
+</p>
+<p align="center"><sub>Screenshot uses a sample database with made-up courses and assignments.</sub></p>
+
 ## Requirements
 
 - macOS with Apple Reminders, Python 3.10 or newer, and a Canvas personal access token.

@@ -51,6 +51,11 @@ The server accepts loopback connections only. Keep it bound to `127.0.0.1`; it i
 python3 cli.py
 ```
 
+<p align="center">
+  <img src="docs/images/cli.png" width="720" alt="Command-line sync choosing Reminders lists and adding six assignments">
+</p>
+<p align="center"><sub>Output from a run against sample Canvas courses.</sub></p>
+
 On first use, choose Reminders list names for your favorite courses. To request AI summaries:
 
 ```sh
